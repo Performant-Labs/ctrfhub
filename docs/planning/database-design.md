@@ -678,3 +678,45 @@ settings: Record<string, unknown> = {};
 ```
 
 Specific preference keys are validated in the route handler (Zod schema), not at the ORM layer, keeping the column flexible for future additions without requiring a migration.
+
+---
+
+### DD-010 — Concurrent settings edits use optimistic locking + SSE push
+
+**Decision:** Simultaneous settings edits by multiple users are handled by a two-layer strategy:
+
+**Layer 1 — Optimistic locking (safety net, no extra infrastructure)**
+
+Every `PATCH` request includes the `updated_at` timestamp of the value the client last read. The server executes the update conditionally:
+
+```sql
+UPDATE organizations
+SET    name = ?, updated_at = NOW()
+WHERE  id = ? AND updated_at = ?  -- version check
+```
+
+If `0` rows are affected, another user saved a conflicting change since the client last loaded the page. The server returns `409 Conflict` with the current value and the name of the user who made the change:
+
+```json
+{ "error": "conflict", "message": "Changed by André A. 30s ago", "current": "Acme Corp 3" }
+```
+
+The field reverts to the current value inline with a subtle "Updated by [user]" notice. No new columns are required — `updated_at` already exists on every entity table.
+
+**Layer 2 — Server-Sent Events (SSE) for org and project settings**
+
+When any admin saves a setting, Fastify broadcasts a `settings:changed` event to all other SSE-connected clients for that org or project. Clients update only the affected field without a page reload. HTMX's SSE extension handles this natively:
+
+```html
+<div hx-ext="sse"
+     sse-connect="/api/sse/org/42/settings"
+     sse-swap="settings:changed">
+  <!-- individual fields re-render on event -->
+</div>
+```
+
+Fastify streams SSE via `reply.raw` with no extra library. The event payload is a partial HTML fragment containing only the changed field — not the full settings page.
+
+**Scope:** SSE is active only on org-level and project-level settings pages. Personal settings (Profile, Security, Notifications, API Keys) carry no SSE connection — only one user can edit their own personal settings.
+
+**Failure mode:** If the SSE connection drops, the client shows stale data until reconnect. The optimistic locking layer ensures any subsequent PATCH from a stale client is rejected safely rather than silently overwriting a newer value.
