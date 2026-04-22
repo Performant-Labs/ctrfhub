@@ -27,6 +27,7 @@ Settings
 │   ├── Audit Log                       [Business Edition]
 │   ├── Billing
 │   ├── Support
+│   ├── System                          (operational health — admin only)
 │   └── About
 │
 └── PROJECT                             (per-project; from project settings)
@@ -267,6 +268,96 @@ No DB required.
 
 ---
 
+### 2.11 System
+*Testiny equivalent: none — CTRFHub addition*
+
+Operational health dashboard for instance administrators. Accessible to org owners/admins only. All data is gathered fresh on each page load (no client-side caching). S3 artifact scan results are cached server-side for 5 minutes to avoid expensive bucket listings.
+
+**Route:** `GET /org/settings/system`
+
+#### Sections
+
+**System Info**
+
+| Field | Source |
+|---|---|
+| CTRFHub version | `package.json` `version` field |
+| Edition | License check (Community / Business) |
+| Node.js version | `process.version` |
+| Uptime | `process.uptime()` formatted as `Xd Xh Xm` |
+| PostgreSQL version | `SELECT version()` |
+| Storage backend | `ARTIFACT_STORAGE` env var (`local` / `s3 (bucket-name)`) |
+| Active SSE connections | In-memory `sseRegistry` count |
+
+**Database Table Sizes** *(descending by size)*
+
+Query from `pg_statio_user_tables` joined with `pg_class`. Shows the 8 largest application tables:
+
+| Column | SQL source |
+|---|---|
+| Table name | `tablename` |
+| Estimated rows | `reltuples::bigint` from `pg_class` |
+| Table size | `pg_size_pretty(pg_relation_size(...))` |
+| Index size | total − table |
+| Total size | `pg_size_pretty(pg_total_relation_size(...))` |
+
+Tables shown: `test_results`, `test_runs`, `test_artifacts`, `audit_logs`, `custom_field_values`, `test_result_comments`, `organizations`, `projects`.
+
+Footer row: **Total DB size** — `SELECT pg_size_pretty(pg_database_size(current_database()))`.
+
+**Artifact Storage**
+
+Queried from the `test_artifacts` table (not filesystem scan — efficient and works for both local and S3):
+
+```sql
+SELECT
+  artifact_type,
+  COUNT(*) AS file_count,
+  pg_size_pretty(SUM(size_bytes)) AS total_size,
+  SUM(size_bytes) AS total_bytes
+FROM test_artifacts
+WHERE storage_type IN ('local', 's3')
+GROUP BY artifact_type
+ORDER BY total_bytes DESC;
+```
+
+External URL artifacts (`storage_type = 'url'`) shown in a separate row as a count only (no size — we don't know external file sizes).
+
+**Disk Space** *(local storage only — hidden when `ARTIFACT_STORAGE=s3`)*
+
+Checked with the `check-disk-space` npm package against `ARTIFACT_LOCAL_PATH`:
+
+| Field | Value |
+|---|---|
+| Volume path | `/data/artifacts` |
+| Total capacity | e.g. `500 GB` |
+| Used | e.g. `142 GB (28%)` |
+| Free | e.g. `358 GB` |
+
+Progress bar rendered with CSS (no JS required): width = `used / total * 100%`. Bar turns amber at 70% used, red at 90%.
+
+**Retention Policy**
+
+| Field | Value |
+|---|---|
+| Org default | `{retention_days} days` (with link to General settings) |
+| Last sweep ran | Timestamp from `system_events` log (deferred — PL-008) |
+| Next scheduled | Next occurrence of `RETENTION_CRON_SCHEDULE` |
+
+**DB:** Uses only existing `organizations.retention_days`. Historical sweep stats (PL-008) are deferred.
+
+#### Growth estimate *(deferred to PL-008)*
+
+"At the current ingestion rate, the disk will fill in approximately X months." Requires daily `system_snapshots` rows written by the nightly worker. Deferred to post-MVP.
+
+#### Data security
+
+- No credentials, connection strings, or secret env vars are exposed on this page
+- S3 bucket name is shown; `S3_KEY` and `S3_SECRET` are never exposed
+- Page requires org admin role; returns 403 for non-admins
+
+---
+
 ### 2.10 About
 *Testiny equivalent: About*
 
@@ -427,6 +518,7 @@ No new DB tables; uses soft-delete (`archived_at` on projects) or hard delete wi
 | `project_notification_rules` | Project > Notifications | Community |
 | `project_webhooks` | Project > Webhooks | Community |
 | `project_webhook_deliveries` | Project > Webhooks | Community |
+| `system_snapshots` | Organization > System | Community — deferred PL-008 |
 | `groups` | Organization > Groups | Business |
 | `group_members` | Organization > Groups | Business |
 | `group_project_access` | Organization > Groups | Business |

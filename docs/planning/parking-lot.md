@@ -221,4 +221,48 @@ Gaffer shows raw JSON. Any tool that ingests CTRF and then surfaces the raw file
 
 ---
 
+## PL-008 — System Status: daily snapshots for growth trending and "time to fill" estimate
+
+**Source:** DD-015 (System Status page)
+**Milestone:** Post-MVP
+
+### Why it's deferred
+
+The System status page (DD-015) ships without this. All five sections (System Info, Database, Artifact Storage, Disk Space, Retention Policy) work from live queries and env vars. The missing piece is trend data — "at the current ingestion rate, your disk will fill in approximately X months."
+
+### What needs to be built
+
+**`system_snapshots` table** — one row written by the nightly worker at the same time as the retention sweep:
+
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT | PK |
+| snapshot_at | TIMESTAMP | When the snapshot was taken |
+| db_total_bytes | BIGINT | `pg_database_size(current_database())` |
+| artifacts_total_bytes | BIGINT | `SUM(size_bytes)` from `test_artifacts` |
+| disk_total_bytes | BIGINT | From `check-disk-space` |
+| disk_free_bytes | BIGINT | From `check-disk-space` |
+| total_runs | INT | `COUNT(*)` from `test_runs` |
+| total_results | BIGINT | `COUNT(*)` from `test_results` |
+| total_artifacts | INT | `COUNT(*)` from `test_artifacts` |
+
+One row per day. 365 rows/year — negligible storage.
+
+**Growth estimate query** (using last 30 days of snapshots):
+
+```sql
+SELECT
+  (MAX(db_total_bytes + artifacts_total_bytes) -
+   MIN(db_total_bytes + artifacts_total_bytes)) / 30.0 AS avg_bytes_per_day,
+  MIN(disk_free_bytes) AS current_free_bytes
+FROM system_snapshots
+WHERE snapshot_at > NOW() - INTERVAL '30 days'
+  AND snapshot_at = (SELECT MAX(snapshot_at) FROM system_snapshots WHERE snapshot_at > NOW() - INTERVAL '30 days');
+-- days_until_full = current_free_bytes / avg_bytes_per_day
+```
+
+**UI addition:** A new "Growth Trend" card on the System page showing a sparkline of daily storage growth over the last 30 days, plus the "~X months until full" estimate. Hidden if fewer than 7 snapshots exist.
+
+---
+
 *Last updated: 2026-04-22*

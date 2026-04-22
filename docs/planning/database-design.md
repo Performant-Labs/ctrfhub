@@ -1080,3 +1080,60 @@ The nightly retention sweep (PL-006) deletes artifact files alongside their pare
 3. Then delete DB rows (cascades to `test_artifacts`)
 
 This ensures orphaned files never accumulate on disk or in S3.
+
+---
+
+### DD-015 — A System status page under Org Settings gives administrators operational visibility; all sensitive credentials are excluded
+
+**Decision:** CTRFHub ships a System status page at `GET /org/settings/system`, accessible to org owners and admins only. The page provides live operational data gathered on each request. No credentials, connection strings, or secret env vars are ever included in the response.
+
+**What the page shows:**
+
+| Section | Data | Source |
+|---|---|---|
+| System Info | CTRFHub version, Node.js version, PostgreSQL version, uptime, edition, active SSE connections, storage backend | `process.*`, `SELECT version()`, in-memory registry |
+| Database | Row count + table/index/total size for 8 key tables; total DB size | `pg_statio_user_tables` + `pg_class` + `pg_database_size()` |
+| Artifact Storage | File count + total size grouped by `artifact_type`; external URL count | `SELECT ... FROM test_artifacts GROUP BY artifact_type` |
+| Disk Space | Volume path, total, used, free, % used with colour-coded progress bar | `check-disk-space` npm package — shown only when `ARTIFACT_STORAGE=local` |
+| Retention Policy | Org default `retention_days`, next scheduled sweep time | `organizations.retention_days`, `RETENTION_CRON_SCHEDULE` env var |
+
+**DB query for table sizes:**
+
+```sql
+SELECT
+  t.tablename,
+  c.reltuples::bigint                                                             AS estimated_rows,
+  pg_size_pretty(pg_relation_size(t.schemaname||'.'||t.tablename))               AS table_size,
+  pg_size_pretty(
+    pg_total_relation_size(t.schemaname||'.'||t.tablename) -
+    pg_relation_size(t.schemaname||'.'||t.tablename))                            AS index_size,
+  pg_size_pretty(pg_total_relation_size(t.schemaname||'.'||t.tablename))         AS total_size,
+  pg_total_relation_size(t.schemaname||'.'||t.tablename)                         AS total_bytes
+FROM pg_statio_user_tables t
+JOIN pg_class c ON c.relname = t.tablename
+WHERE t.tablename IN (
+  'test_results', 'test_runs', 'test_artifacts',
+  'audit_logs', 'custom_field_values', 'test_result_comments',
+  'organizations', 'projects'
+)
+ORDER BY total_bytes DESC;
+```
+
+**Disk space progress bar — CSS-only colour coding:**
+
+```css
+.disk-bar { background: var(--color-surface-2); border-radius: 4px; height: 8px; }
+.disk-bar__fill { height: 100%; border-radius: 4px; background: var(--color-pass); }
+.disk-bar__fill[data-pct="amber"] { background: var(--color-warn); }  /* > 70% used */
+.disk-bar__fill[data-pct="red"]   { background: var(--color-fail); }  /* > 90% used */
+```
+
+The `data-pct` attribute is set server-side in the Eta template — no JavaScript needed.
+
+**Excluded from the page:**
+- `DATABASE_URL` (contains password)
+- `S3_KEY` and `S3_SECRET`
+- `SESSION_SECRET`
+- Any env var containing `SECRET`, `PASSWORD`, `KEY`, or `TOKEN`
+
+**Deferred:** Growth trend ("disk will fill in X months") requires daily `system_snapshots` rows written by the nightly worker. This is tracked as PL-008. The System page renders without it — that section is simply omitted from the MVP.
