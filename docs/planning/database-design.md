@@ -884,3 +884,79 @@ fastify.get('/api/sse/orgs/:orgId', async (request, reply) => {
 ```
 
 **DDoS surface summary:** All SSE endpoints require a valid authenticated session — unauthenticated SSE connections are rejected at step 1 before any stream is opened. The ingest endpoint requires a valid project token. The only unauthenticated attack surface is the login page and the health check endpoint, both of which are covered by the reverse proxy `limit_req` rule.
+
+---
+
+### DD-013 — Loading states are contextual, delayed, and scoped to the updating element; global top-bar progress indicators are not used
+
+**Decision:** CTRFHub does not use a global top-of-page progress bar (NProgress style) for loading feedback. All loading indicators are:
+
+1. **Contextual** — scoped to the specific element being updated, not the full page. A table refresh shows nothing on the header; a button action shows nothing on the sidebar.
+2. **Delayed** — only appear if the response takes longer than 150 ms. Fast responses feel instant with no indicator flash.
+3. **Tiered** — the indicator type matches the nature of the interaction.
+
+**Tier table:**
+
+| Scenario | Loading indicator |
+|---|---|
+| Settings auto-save (toggle, text blur) | Nothing → per-field "Saving… → ✓" (DD-009) |
+| Table / list HTMX refresh | Opacity fade to 60% on the container (CSS only) |
+| Button action (Delete, Create) | Inline dot spinner inside button + `disabled` attribute |
+| File upload / CTRF ingest | Determinate progress bar *inside the upload widget only* — the one case where a bar is semantically correct (actual % progress) |
+| Dashboard KPI card refresh | Skeleton shimmer on card outlines (deferred — see below) |
+| Page-level navigation | Nothing for <150 ms; opacity fade on `<main>` for slower responses |
+
+**HTMX implementation contract:**
+
+Every HTMX element must be written with the indicator hook in place from the start, even if the visual polish is deferred. This ensures no HTMX markup needs to be retroactively updated when loading states are implemented.
+
+```html
+<!-- Every hx-* element that updates content includes hx-indicator -->
+<div id="runs-table"
+     hx-get="/projects/frontend-e2e/runs"
+     hx-trigger="sse:run.created"
+     hx-swap="outerHTML"
+     hx-indicator="#runs-table">  <!-- self-indicating -->
+</div>
+
+<!-- Buttons include an explicit indicator target -->
+<button id="delete-run-btn"
+        hx-delete="/runs/891"
+        hx-confirm="..."
+        hx-indicator="#delete-run-btn">
+  Delete run
+  <span class="htmx-indicator btn-spinner" aria-hidden="true"></span>
+</button>
+```
+
+**Global CSS convention** (write once in `index.css`; refine visuals later without touching markup):
+
+```css
+/* Delayed reveal — no flash for fast (<150ms) responses */
+.htmx-indicator {
+  opacity: 0;
+  transition: opacity 0s 150ms;
+}
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  opacity: 1;
+  transition: opacity 200ms ease 150ms;
+}
+
+/* Fade the element being replaced — zero extra HTML needed */
+.htmx-request {
+  opacity: 0.6;
+  transition: opacity 200ms ease 150ms;
+}
+
+/* Buttons get their own treatment — no fade, just disable */
+button.htmx-request {
+  opacity: 1;        /* override the fade */
+  pointer-events: none;
+  cursor: not-allowed;
+}
+```
+
+**What is deferred:** The skeleton shimmer component (for Dashboard KPI cards and large content areas) requires CSS animation work and is explicitly not part of the initial implementation. The `hx-indicator` hooks will be in place; only the visual style of `.htmx-indicator` inside those elements is left as a TODO.
+
+**What is not permitted:** A full-page NProgress-style bar, spinner overlays that cover interactive content, or any loading state that blocks user interaction with unrelated parts of the page.
