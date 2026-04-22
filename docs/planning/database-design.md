@@ -317,6 +317,64 @@ Step-level execution results for a single test plan entry. Records actual vs exp
 
 ---
 
+### 4.15 custom_field_definitions
+
+Org-level definitions for user-created metadata fields. Can be applied to `test_cases`, `test_results`, or `test_runs`. Definitions are created once at org level and enabled per-project.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| id | BIGINT | PK, AUTO_INCREMENT | |
+| org_id | BIGINT | NOT NULL, FK → organizations.id | Indexed |
+| name | VARCHAR(255) | NOT NULL | e.g. "Jira Ticket", "Component", "Estimate" |
+| field_type | ENUM | NOT NULL | text \| integer \| decimal \| boolean \| date \| duration \| dropdown \| url |
+| entity_type | ENUM | NOT NULL | test_case \| test_result \| test_run |
+| dropdown_options | JSON | | Array of option strings; only used when field_type = dropdown |
+| required | BOOLEAN | NOT NULL, DEFAULT FALSE | |
+| enabled | BOOLEAN | NOT NULL, DEFAULT TRUE | |
+| in_new_projects | BOOLEAN | NOT NULL, DEFAULT TRUE | Auto-enable on newly created projects |
+| display_order | SMALLINT | NOT NULL, DEFAULT 0 | Drag-to-reorder within entity type |
+| created_by | BIGINT | NOT NULL, FK → users.id | |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | |
+| updated_at | TIMESTAMP | NOT NULL | |
+
+---
+
+### 4.16 custom_field_values
+
+Stores the actual values for custom fields on individual entities. Uses typed value columns (not a stringly-typed catch-all) to preserve integrity and allow SQL-level filtering.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| id | BIGINT | PK, AUTO_INCREMENT | |
+| field_id | BIGINT | NOT NULL, FK → custom_field_definitions.id | Indexed |
+| entity_id | BIGINT | NOT NULL | ID of the test_case, test_result, or test_run |
+| entity_type | ENUM | NOT NULL | test_case \| test_result \| test_run — mirrors field definition |
+| value_text | TEXT | | Used for text, dropdown, url field types |
+| value_integer | BIGINT | | Used for integer field type |
+| value_decimal | DECIMAL(18,4) | | Used for decimal field type |
+| value_boolean | BOOLEAN | | Used for boolean field type |
+| value_date | DATE | | Used for date field type |
+| value_duration_ms | BIGINT | | Used for duration field type; stored in milliseconds |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | |
+| updated_at | TIMESTAMP | NOT NULL | |
+
+> **Uniqueness:** A composite unique index on `(field_id, entity_id, entity_type)` ensures one value row per field per entity.
+
+---
+
+### 4.17 project_custom_field_settings
+
+Per-project enable/disable override for each custom field definition. When `in_new_projects` is TRUE on the definition, a row is automatically created here for new projects.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| id | BIGINT | PK, AUTO_INCREMENT | |
+| project_id | BIGINT | NOT NULL, FK → projects.id | Indexed |
+| field_id | BIGINT | NOT NULL, FK → custom_field_definitions.id | |
+| enabled | BOOLEAN | NOT NULL, DEFAULT TRUE | |
+
+---
+
 ## 5. Indexes
 
 | Table | Index Columns | Purpose |
@@ -346,6 +404,11 @@ Step-level execution results for a single test plan entry. Records actual vs exp
 | test_plan_entries | test_case_id | All executions of a test case across plans *(Business)* |
 | test_plan_entries | assigned_to | All entries assigned to a user *(Business)* |
 | test_plan_entry_steps | test_plan_entry_id | All step results for an entry *(Business)* |
+| custom_field_definitions | org_id | All field definitions for an org |
+| custom_field_definitions | org_id, entity_type | All fields for a given entity type |
+| custom_field_values | field_id, entity_id, entity_type | Unique value per field per entity (also enforces uniqueness) |
+| custom_field_values | entity_id, entity_type | All custom field values for a given entity |
+| project_custom_field_settings | project_id | All field settings for a project |
 
 ---
 

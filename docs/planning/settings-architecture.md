@@ -23,6 +23,7 @@ Settings
 │   ├── Roles                           [Business Edition]
 │   ├── SSO / Authentication            [Business Edition]
 │   ├── Integrations
+│   ├── Custom Fields
 │   ├── Audit Log                       [Business Edition]
 │   ├── Billing
 │   ├── Support
@@ -180,7 +181,29 @@ Custom RBAC roles beyond the built-in Admin/Member/Viewer.
 
 ---
 
-### 2.6 Integrations
+### 2.6 Custom Fields
+*Testiny equivalent: Custom fields*
+
+Unlimited user-defined metadata fields applied to `test_cases`, `test_results`, or `test_runs`. Defined once at org level and enabled per-project. CTRF ingest API can populate values as part of the run payload.
+
+| Field | Notes |
+|---|---|
+| Name | User-defined label (e.g. "Jira Ticket", "Component", "Estimate") |
+| Type | text \| integer \| decimal \| boolean \| date \| duration \| dropdown \| url |
+| Applies to | test_case \| test_result \| test_run |
+| Dropdown options | Ordered list of option strings (only for dropdown type) |
+| Required | Toggle — enforces value entry in UI |
+| Enabled | Toggle — hide from UI without deleting |
+| In new projects | Toggle — auto-enable on newly created projects |
+| Display order | Drag-to-reorder within entity type |
+
+From the project side (Project → General or a dedicated tab), a project admin can enable/disable which org-level fields apply to their project.
+
+**DB:** `custom_field_definitions` + `custom_field_values` + `project_custom_field_settings` tables.
+
+---
+
+### 2.7 Integrations
 *Testiny equivalent: Integrations*
 
 Org-level outbound integrations. Project-level webhooks are separate (Project → Webhooks).
@@ -372,7 +395,7 @@ No new DB tables; uses soft-delete (`archived_at` on projects) or hard delete wi
 | Group management | Groups | Organization | Business Edition |
 | Role management | Roles | Organization | Business Edition |
 | Integrations | Integrations | Organization | Expanded (Slack, Jira, GitHub, PagerDuty, SMTP) |
-| Custom fields | *(deferred)* | — | Manual TMS feature; not in MVP |
+| Custom fields | Custom Fields | Organization | Community; unlimited fields, 3 entity types |
 | Automation | CI Integration | Project | Renamed; project-scoped token + YAML snippets |
 | Audit log | Audit Log | Organization | Business Edition |
 | Billing | Billing | Organization | License key model for self-hosted |
@@ -395,6 +418,9 @@ No new DB tables; uses soft-delete (`archived_at` on projects) or hard delete wi
 | `personal_api_tokens` | Personal > API Keys | Community |
 | `organization_members` | Organization > Members | Community |
 | `org_integrations` | Organization > Integrations | Community |
+| `custom_field_definitions` | Organization > Custom Fields | Community |
+| `custom_field_values` | Organization > Custom Fields | Community |
+| `project_custom_field_settings` | Organization > Custom Fields | Community |
 | `licenses` | Organization > Billing | Both |
 | `project_environments` | Project > Environments | Community |
 | `project_tokens` | Project > CI Integration | Community |
