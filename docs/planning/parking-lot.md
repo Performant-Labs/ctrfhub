@@ -186,4 +186,39 @@ Should the cron run inside the Fastify process (using `node-cron`) or as a separ
 
 ---
 
+## PL-007 — "Full Report" view must render human-readable HTML, not raw JSON
+
+**Source:** Gaffer gap observed in production (2026-04-22)
+**Milestone:** MVP — core differentiator, must ship at launch
+
+### The gap
+
+When clicking "Full Report" in Gaffer, the user is shown the raw CTRF JSON payload. There is no rendering — no table, no formatting, no duration bars, nothing. It is a `application/json` dump in a browser tab.
+
+### CTRFHub requirement
+
+The Run Detail page **is** the "Full Report." It must render every CTRF field into a structured, human-readable layout:
+
+| Section | Content |
+|---|---|
+| Header | Run name, status badge, pass rate progress bar, start time, duration |
+| Summary row | Tests / Passed / Failed / Skipped counts with icons |
+| Environment | `appName`, `buildName`, `buildNumber`, `commitSha`, `branch` as labeled chips |
+| Test results table | Name, status icon, duration (ms), message (for failures/skips) |
+| Failure detail | Expandable row showing `message` and `trace` if present |
+
+### Design rules
+
+- Status badges use `--color-pass` / `--color-fail` / `--color-skip` tokens (not hardcoded)
+- Duration column rendered as `Xms` or `Xs` depending on magnitude
+- Skipped tests shown in a muted style, not hidden
+- Page is printable / shareable as a standalone URL (`/runs/:id`)
+- No JSON visible anywhere to end users — JSON only accessible via `GET /api/runs/:id` for programmatic consumers
+
+### Why this is a differentiator
+
+Gaffer shows raw JSON. Any tool that ingests CTRF and then surfaces the raw file back to the user has missed the point. The entire value of a test reporting platform is turning machine-generated JSON into something a human can act on in 10 seconds.
+
+---
+
 *Last updated: 2026-04-22*
