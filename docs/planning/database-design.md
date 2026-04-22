@@ -983,8 +983,16 @@ interface ArtifactStorage {
   deletePrefix(prefix: string): Promise<void>;
 }
 
-// Storage key convention: orgs/{orgId}/runs/{runId}/results/{resultId}/{filename}
-// This prefix structure enables deletePrefix() to clean up an entire run in one call
+// Storage key convention:
+// orgs/{orgId}/projects/{projectId}/runs/{runId}/results/{resultId}/{filename}
+//
+// Including projectId in the path enables a single deletePrefix() call at every level:
+//   Delete org     → deletePrefix('orgs/{orgId}/')
+//   Delete project → deletePrefix('orgs/{orgId}/projects/{projectId}/')
+//   Delete run     → deletePrefix('orgs/{orgId}/projects/{projectId}/runs/{runId}/')
+//
+// For storage_type = 'url' rows: no file exists; deletePrefix is not called.
+// Only the test_artifacts DB row needs to be removed.
 ```
 
 **Implementations:**
@@ -1023,7 +1031,7 @@ The "Open in Trace Viewer" button is shown on any artifact where `artifact_type 
 
 Playwright HTML reports are multi-file zips (`index.html` + data JSON + assets). When uploaded:
 1. Server detects `artifact_type = html_report` + `content_type = application/zip`
-2. Unzips to `{ARTIFACT_LOCAL_PATH}/orgs/{orgId}/runs/{runId}/html-report/` (or S3 prefix)
+2. Unzips to `{ARTIFACT_LOCAL_PATH}/orgs/{orgId}/projects/{projectId}/runs/{runId}/html-report/` (or S3 prefix)
 3. `index.html` and assets served at `/runs/:runId/report/` via static file route
 4. Opened in a new browser tab (not an iframe — Playwright HTML reports have their own navigation)
 
@@ -1072,12 +1080,40 @@ When `storage_type = 'url'`, CTRFHub detects the domain and renders appropriatel
 | `vimeo.com` | Vimeo embed |
 | Everything else | Plain `<a>` link with external link icon |
 
-**Retention integration:**
+**Cascade deletion strategy:**
 
-The nightly retention sweep (PL-006) deletes artifact files alongside their parent runs:
+Storage files must always be deleted **before** DB rows. If DB rows are removed first, the `storage_key` data is gone and any files become permanently orphaned.
+
+```
+Correct order for all delete operations:
+  1. deletePrefix() on storage  ← files gone
+  2. Delete DB rows             ← cascade handles test_results → test_artifacts
+```
+
+This applies at every entity level:
+
+| Delete target | Storage operation | Notes |
+|---|---|---|
+| Organisation | `deletePrefix('orgs/{orgId}/')` | Removes all files for all projects and runs |
+| Project | `deletePrefix('orgs/{orgId}/projects/{projectId}/')` | Removes all files for all runs in the project |
+| Test run | `deletePrefix('orgs/{orgId}/projects/{projectId}/runs/{runId}/')` | Removes all files for this run only |
+| Single result | Query `storage_key` per artifact row, call `delete(key)` for each | Used when a single result is deleted (rare) |
+
+**`storage_type = 'url'` rows require no storage deletion** — they have no file we own. Only the DB row is removed. Callers must filter these out before calling deletePrefix/delete:
+
+```typescript
+// Correct pattern before any DB delete
+const ownedArtifacts = run.artifacts.filter(a => a.storageType !== 'url');
+if (ownedArtifacts.length > 0) {
+  await artifactStorage.deletePrefix(`orgs/${orgId}/projects/${projectId}/runs/${runId}/`);
+}
+// Now safe to delete DB rows
+```
+
+**Nightly retention sweep** (PL-006):
 1. Identify `test_runs` rows to delete (age > retention_days, not milestone-protected)
-2. For each run, call `artifactStorage.deletePrefix('orgs/{orgId}/runs/{runId}/')` before deleting DB rows
-3. Then delete DB rows (cascades to `test_artifacts`)
+2. For each run: `artifactStorage.deletePrefix('orgs/{orgId}/projects/{projectId}/runs/{runId}/')`
+3. Delete DB rows in chunks (cascades to `test_results` → `test_artifacts`)
 
 This ensures orphaned files never accumulate on disk or in S3.
 
