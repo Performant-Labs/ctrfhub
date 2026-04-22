@@ -85,6 +85,7 @@ A project maps to a single Drupal site or application under test. One organizati
 | organization_id | BIGINT | NOT NULL, FK → organizations.id | Indexed |
 | name | VARCHAR(255) | NOT NULL | |
 | slug | VARCHAR(100) | NOT NULL | Unique within org |
+| id_prefix | VARCHAR(10) | NOT NULL | Run ID prefix (e.g. "E2E"); defaults to first 4 uppercase chars of slug; displayed as `{prefix}-{run_sequence}` |
 | base_url | VARCHAR(500) | | Site under test |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | |
 | updated_at | TIMESTAMP | NOT NULL | |
@@ -537,3 +538,37 @@ The two execution models are fundamentally different:
 Merging them into a single table would require nullable columns for each model's fields, ENUMs that conflate two different lifecycles, and conditional logic throughout the application layer.
 
 **Cross-reference bridge (reserved for future):** `test_results` has a reserved slot for an optional `test_case_id` FK. When implemented, it will allow automated runs to be linked to their manual test_case counterpart, enabling a unified coverage view (e.g. "TC-42 passes in automation — show me the last manual execution of the same case"). This FK is intentionally not added to the schema today to avoid premature coupling.
+
+---
+
+### DD-005 — "Test Results" sidebar item is a project-scoped cross-run shortcut
+
+**Decision:** The "Test Results" nav item in the sidebar is a shortcut to a flat, cross-run result view for the currently selected project, pre-filtered to the last 7 days. It is not a duplicate of the drill-in view inside a specific run.
+
+**Rationale:** Two distinct user needs exist: (1) "What happened in run ATR-128?" — served by drilling into a run. (2) "Show me all failures across all recent runs for this project" — served by the cross-run shortcut. The shortcut enables the second workflow without forcing the user to open each run individually.
+
+---
+
+### DD-006 — Run ID prefix is user-settable per project; default is auto-derived from slug
+
+**Decision:** `projects.id_prefix` (VARCHAR 10) stores a short uppercase prefix, e.g. `E2E`, `API`, `MOB`. Run display IDs are formatted as `{prefix}-{run_sequence}`. The prefix defaults to the first 4 uppercase non-separator characters of the project slug at creation time and can be changed in project settings.
+
+**Rationale:** Testiny uses a fixed system-wide `ATR-` prefix. Making it per-project (Jira/Linear pattern) makes IDs immediately recognizable in Slack, email, and bug trackers without needing extra context. `run_sequence` is a per-project monotonic counter (INT on `test_runs`), not the global surrogate key, so IDs stay short and human-readable even at scale.
+
+**Note:** `run_sequence` column must be added to `test_runs` and generated atomically (SELECT MAX + 1 within a transaction, or a per-project DB sequence). Reserved for implementation at the ingest service layer.
+
+---
+
+### DD-007 — "Upload CTRF Report" action lives on the Test Runs screen
+
+**Decision:** The manual CTRF report upload button is placed on the Test Runs list page (top-right), not in project settings or a dedicated import screen.
+
+**Rationale:** The Test Runs screen is where users expect to see and add runs. Placing upload there gives the action immediate context and collocates it with the results it produces.
+
+---
+
+### DD-008 — Dashboard is project-scoped only (no org-level dashboard in MVP)
+
+**Decision:** The Dashboard screen shows metrics for the currently selected project only. There is no cross-project org-level dashboard in the MVP.
+
+**Rationale:** An org-level dashboard requires aggregating across projects with potentially different reporting cadences, environments, and team contexts. The complexity is not justified for MVP. A project-level dashboard covers the primary persona's (QA lead / developer) core workflow. Org-level analytics can be added as a future Business Edition feature.
