@@ -8,21 +8,19 @@ Deferred decisions and infrastructure tasks that are not blockers for MVP scaffo
 
 **Source:** DD-012
 **Milestone:** Before first public release / alpha
+**See also:** `deployment-architecture.md`
 
-DD-012 states that a reverse proxy is **required** for all production deployments and that CTRFHub ships a reference config in its Docker Compose bundle. That config does not yet exist.
+DD-012 states that a reverse proxy is **required** for all production deployments and that CTRFHub ships a reference config in its Docker Compose bundle. The deployment topology is now documented in `deployment-architecture.md` (Caddy chosen as default; Nginx alternative provided). The actual config files still need to be created.
 
 **What needs to be created:**
 
-- `docker/nginx/nginx.conf` (or `docker/caddy/Caddyfile`) with:
-  - `limit_conn` — max 20 concurrent connections per IP
-  - `limit_req` — max 50 req/s per IP, burst 20
-  - `proxy_read_timeout 3600s` for SSE routes (`/api/sse/*`)
-  - HTTPS termination (Caddy handles this automatically; Nginx needs cert config)
-  - `X-Accel-Buffering: no` header passthrough for SSE
-- Updated `docker-compose.yml` to include the proxy service in front of the Fastify app
+- `docker/caddy/Caddyfile` — with rate limiting, SSE flush config, HTTPS
+- `docker/nginx/nginx.conf` — alternative for Nginx users
+- `docker/docker-compose.yml` — full compose file per `deployment-architecture.md`
+- `docker/docker-compose.override.yml.example` — dev override (exposes DB port, skips TLS)
 - Deployment docs section: "Why a reverse proxy is required"
 
-**Decision needed:** Nginx or Caddy? Caddy is simpler (automatic HTTPS, minimal config) and better for self-hosters who aren't Nginx experts. Nginx is more familiar to ops teams. Recommendation: **Caddy** as the default with an Nginx alternative in the docs.
+**Decision: Caddy** (confirmed). Nginx alternative provided in `docker/nginx/` for teams that already run Nginx.
 
 ---
 
@@ -182,7 +180,9 @@ Without a retention policy, `test_results` grows unboundedly. At normal CI veloc
 
 ### Decision needed
 
-Should the cron run inside the Fastify process (using `node-cron`) or as a separate process/container in Docker Compose? Recommendation: **separate process** — keeps the Fastify API server focused on request handling and prevents a slow retention sweep from affecting API response times.
+Should the cron run inside the Fastify process (using `node-cron`) or as a separate process/container in Docker Compose?
+
+**Decision: separate `worker` container** (confirmed — see `deployment-architecture.md`). The worker shares the same Docker image as `api` but uses entrypoint `node dist/worker.js`. This keeps the API server focused on request handling and prevents a slow retention sweep from affecting API response times. The single-worker constraint (do not run multiple worker instances simultaneously without a distributed lock) is documented in `deployment-architecture.md`.
 
 ---
 
