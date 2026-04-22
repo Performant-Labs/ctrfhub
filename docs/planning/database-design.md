@@ -72,6 +72,8 @@ Top-level tenant boundary. All data within the system belongs to an organization
 | id | BIGINT | PK, AUTO_INCREMENT | Surrogate key |
 | name | VARCHAR(255) | NOT NULL | Display name |
 | slug | VARCHAR(100) | NOT NULL, UNIQUE | URL-safe identifier |
+| retention_days | INT | NOT NULL, DEFAULT 90 | Nightly cron deletes runs older than this. 0 = keep forever. Org-level default; overridable per project. |
+| settings | JSONB | NOT NULL, DEFAULT '{}' | Org-level preferences (timezone, etc.) per DD-009 |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | |
 | updated_at | TIMESTAMP | NOT NULL | |
 
@@ -87,6 +89,8 @@ A project maps to a single Drupal site or application under test. One organizati
 | slug | VARCHAR(100) | NOT NULL | Unique within org |
 | id_prefix | VARCHAR(10) | NOT NULL | Run ID prefix (e.g. "E2E"); defaults to first 4 uppercase chars of slug; displayed as `{prefix}-{run_sequence}` |
 | base_url | VARCHAR(500) | | Site under test |
+| retention_days | INT | | NULL = inherit from org default. Set to override: e.g. 7 for noisy unit test projects, 365 for critical E2E. 0 = keep forever. |
+| settings | JSONB | NOT NULL, DEFAULT '{}' | Project-level preferences per DD-009 |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | |
 | updated_at | TIMESTAMP | NOT NULL | |
 

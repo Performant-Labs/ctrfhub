@@ -148,4 +148,42 @@ Streaming aggregation is a meaningfully different product feature — closer to 
 
 ---
 
+## PL-006 — Data retention policy: auto-delete old runs on a nightly cron
+
+**Source:** Storage growth analysis; `storage-growth-reference.md`
+**Milestone:** MVP — must ship before first public release
+
+### Why it's required
+
+Without a retention policy, `test_results` grows unboundedly. At normal CI velocity (Active team scenario), the database accumulates ~60 GB/month. Self-hosters running large monorepos or device testing will fill modest servers within weeks if unchecked.
+
+### Schema changes (already applied)
+
+- `organizations.retention_days INT NOT NULL DEFAULT 90` — org-level default
+- `projects.retention_days INT NULL` — NULL = inherit from org; set to override per project
+- `0` = keep forever (explicit opt-out)
+
+### What needs to be implemented
+
+1. **Nightly cron job** (Fastify plugin or separate process) that runs at 02:00 local server time:
+   - For each project, determine effective `retention_days` (`project.retention_days ?? org.retention_days`)
+   - If `retention_days = 0`, skip
+   - `DELETE FROM test_runs WHERE project_id = ? AND created_at < NOW() - INTERVAL '{N} days'` — cascade deletes `test_results`, `test_artifacts`, `test_result_comments`, `custom_field_values`
+   - Chunk deletes at 1,000 runs per batch with a 100ms sleep between batches to avoid table locks
+
+2. **Milestone protection** *(Business Edition)*: exclude runs where `milestone_id IS NOT NULL AND milestones.status = 'closed'` from deletion regardless of age.
+
+3. **Settings UI**: `retention_days` field in:
+   - Org Settings → General (org default, shown as "Keep runs for N days")
+   - Project Settings → General (per-project override, with "Use org default (N days)" as placeholder)
+   - Warning displayed when `retention_days = 0` AND any project token has `rate_limit_per_hour = 0`
+
+4. **Audit log entry** *(Business Edition)*: record how many runs were deleted on each retention sweep.
+
+### Decision needed
+
+Should the cron run inside the Fastify process (using `node-cron`) or as a separate process/container in Docker Compose? Recommendation: **separate process** — keeps the Fastify API server focused on request handling and prevents a slow retention sweep from affecting API response times.
+
+---
+
 *Last updated: 2026-04-22*
