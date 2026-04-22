@@ -375,6 +375,23 @@ Per-project enable/disable override for each custom field definition. When `in_n
 
 ---
 
+### 4.18 project_tokens
+
+Project-scoped ingest tokens used by CI pipelines to authenticate CTRF report submissions. Separate from personal API keys (which authenticate users). One project can have multiple tokens (e.g. one per CI environment).
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| id | BIGINT | PK, AUTO_INCREMENT | |
+| project_id | BIGINT | NOT NULL, FK → projects.id | Indexed |
+| name | VARCHAR(255) | NOT NULL | e.g. "GitHub Actions", "CI Staging" |
+| token_hash | VARCHAR(255) | NOT NULL, UNIQUE | SHA-256 hash of the actual token; plaintext never stored |
+| rate_limit_per_hour | INT | NOT NULL, DEFAULT 120 | Max ingest requests per hour for this token. Default 120 (CI use). Raise for high-frequency sources (device testing etc). 0 = unlimited (self-hoster accepts responsibility). |
+| last_used_at | TIMESTAMP | | Updated on each successful ingest |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | |
+| revoked_at | TIMESTAMP | | NULL = active; set to revoke without deleting |
+
+---
+
 ## 5. Indexes
 
 | Table | Index Columns | Purpose |
@@ -409,6 +426,8 @@ Per-project enable/disable override for each custom field definition. When `in_n
 | custom_field_values | field_id, entity_id, entity_type | Unique value per field per entity (also enforces uniqueness) |
 | custom_field_values | entity_id, entity_type | All custom field values for a given entity |
 | project_custom_field_settings | project_id | All field settings for a project |
+| project_tokens | project_id | All tokens for a project |
+| project_tokens | token_hash | Token lookup on ingest authentication (most frequent query) |
 
 ---
 
@@ -800,7 +819,7 @@ Required for all production deployments. CTRFHub ships a reference Nginx/Caddy c
 | Endpoint class | Limit | Rationale |
 |---|---|---|
 | Login / forgot-password | 10 req/min per IP | Brute force / credential stuffing protection |
-| CTRF ingest (`POST /runs`) | 120 req/hour per project token | Guards against CI misconfiguration floods |
+| CTRF ingest (`POST /runs`) | Default 120 req/hour per project token; configurable per token via `project_tokens.rate_limit_per_hour` (0 = unlimited) | CI misconfiguration guard; high-frequency sources (device testing, etc.) can raise the limit per token in CI Integration settings |
 | Settings `PATCH` | 60 req/min per authenticated user | Auto-save debounce already reduces volume |
 | SSE `GET /api/sse/*` | 1 new connection per user per 2s | Prevents rapid reconnect amplification |
 | General authenticated API | 600 req/min per user | Generous for normal interactive use |

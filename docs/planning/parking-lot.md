@@ -119,4 +119,33 @@ This pattern should be applied consistently to all CTRFHub destructive confirmat
 
 ---
 
+## PL-005 — Streaming ingest mode for high-frequency sources (future Business Edition)
+
+**Source:** Design discussion — Option C from ingest flood analysis
+**Milestone:** Post-MVP; Business Edition candidate
+
+### Background
+
+`project_tokens.rate_limit_per_hour` (from DD-012 amendment) allows high-frequency sources (IoT devices, embedded hardware-in-the-loop testing) to raise their per-token limit. However, even with an unlimited rate limit, the current CTRF-per-run batch model has architectural tensions at high frequency:
+
+- **Storage explosion**: 1,000 runs/hour × 100 tests = 100,000 `test_results` rows/hour per project
+- **UI noise**: the "↑ N new runs" banner becomes meaningless at high frequency
+- **Model mismatch**: CTRF's "run" concept is a discrete completed event, not a continuous stream. High-frequency sources map better to a time-series / stream model.
+
+### Proposed solution (deferred)
+
+A separate endpoint `POST /api/v1/projects/:slug/stream` that accepts lightweight single-result payloads and aggregates them server-side into synthetic runs on a configurable time-window basis (e.g., "group all results from this token in any 60-second window into one run"). The SSE `run.created` event fires once per window, not once per result.
+
+This requires:
+- A new aggregation pipeline (separate from the standard ingest handler)
+- Time-windowing logic (tumbling or sliding window)
+- A way to signal "this run is still accumulating" vs "this run is complete"
+- Storage strategy for high-volume result streams (possibly a separate hot table with TTL)
+
+### Why deferred
+
+Streaming aggregation is a meaningfully different product feature — closer to observability/telemetry than test reporting. It requires significant design work independent of the core CTRF reporting flow. The configurable `rate_limit_per_hour` on project tokens satisfies the immediate need for teams with moderately elevated ingest rates without committing to a streaming architecture.
+
+---
+
 *Last updated: 2026-04-22*
