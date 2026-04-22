@@ -81,11 +81,12 @@ All persistent data lives on **named Docker volumes**, never bind-mounted paths.
 | Volume | Container | Contents | Notes |
 |---|---|---|---|
 | `db_data` | `db` | PostgreSQL data directory | Most critical — back this up |
+| `artifacts_data` | `api`, `worker` | Uploaded test artifacts (screenshots, videos, traces) | Back up alongside db_data; only used when `ARTIFACT_STORAGE=local` |
 | `redis_data` | `redis` | Redis AOF persistence | Only needed when Redis is enabled |
 | `caddy_data` | `proxy` | TLS certificate cache (Let's Encrypt) | Survives proxy container restarts |
 | `caddy_config` | `proxy` | Caddy internal config state | Survives proxy container restarts |
 
-**Backup target:** `db_data` is the only volume that requires regular backup. A `pg_dump` cron job (separate from the application cron) should run daily and write to external storage. This is the self-hoster's responsibility; CTRFHub should document it clearly but not implement it (it's too environment-specific).
+**Backup targets:** `db_data` and `artifacts_data` (when using local storage) both require regular backup. When `ARTIFACT_STORAGE=s3`, artifact files live in the configured S3 bucket and `artifacts_data` is not used.
 
 ---
 
@@ -116,7 +117,15 @@ services:
       - EVENT_BUS           # memory | redis
       - REDIS_URL           # required when EVENT_BUS=redis
       - MAX_PAYLOAD_SIZE    # default: 10mb (PL-003)
+      - ARTIFACT_STORAGE    # local | s3 (default: local)
+      - ARTIFACT_LOCAL_PATH # default: /data/artifacts
+      - S3_ENDPOINT         # required when ARTIFACT_STORAGE=s3
+      - S3_BUCKET
+      - S3_KEY
+      - S3_SECRET
       - PORT                # default: 3000
+    volumes:
+      - artifacts_data:/data/artifacts  # only used when ARTIFACT_STORAGE=local
     depends_on:
       db:
         condition: service_healthy
@@ -128,6 +137,14 @@ services:
       - DATABASE_URL
       - EVENT_BUS
       - REDIS_URL
+      - ARTIFACT_STORAGE
+      - ARTIFACT_LOCAL_PATH
+      - S3_ENDPOINT
+      - S3_BUCKET
+      - S3_KEY
+      - S3_SECRET
+    volumes:
+      - artifacts_data:/data/artifacts  # worker deletes artifact files during retention sweep
     depends_on:
       db:
         condition: service_healthy
@@ -156,6 +173,7 @@ services:
 
 volumes:
   db_data:
+  artifacts_data:   # Uploaded test artifacts — only used when ARTIFACT_STORAGE=local
   redis_data:
   caddy_data:
   caddy_config:
@@ -176,6 +194,12 @@ Redis uses a Docker Compose **profile** (`scale-out`) so it's not started for st
 | `EVENT_BUS` | | `memory` | `memory` \| `redis` |
 | `REDIS_URL` | When `EVENT_BUS=redis` | — | e.g. `redis://redis:6379` |
 | `MAX_PAYLOAD_SIZE` | | `10mb` | CTRF ingest body size limit (PL-003) |
+| `ARTIFACT_STORAGE` | | `local` | `local` \| `s3` |
+| `ARTIFACT_LOCAL_PATH` | | `/data/artifacts` | Root path for local artifact storage |
+| `S3_ENDPOINT` | When `ARTIFACT_STORAGE=s3` | — | e.g. `https://s3.amazonaws.com` or MinIO URL |
+| `S3_BUCKET` | When `ARTIFACT_STORAGE=s3` | — | Bucket name |
+| `S3_KEY` | When `ARTIFACT_STORAGE=s3` | — | Access key ID |
+| `S3_SECRET` | When `ARTIFACT_STORAGE=s3` | — | Secret access key |
 | `PORT` | | `3000` | Internal Fastify port (proxy forwards to this) |
 | `LOG_LEVEL` | | `info` | `debug` \| `info` \| `warn` \| `error` |
 | `RETENTION_CRON_SCHEDULE` | | `0 2 * * *` | Cron expression for nightly retention sweep (2am) |

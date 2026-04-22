@@ -163,17 +163,19 @@ One row per individual test case within a run. Write-once; rows are never re-par
 
 ### 4.6 test_artifacts
 
-Artifacts associated with a test result (screenshots, videos, traces, logs). Replaces the flat `screenshot_url` / `video_url` columns from earlier designs, allowing multiple artifacts of any type per result.
+Artifacts associated with a test result (screenshots, videos, traces, logs, HTML reports). Replaces the flat `screenshot_url` / `video_url` columns from earlier designs, allowing multiple artifacts of any type per result. Backed by an abstracted `ArtifactStorage` interface — local disk for MVP, S3-compatible for scale-out (see DD-014).
 
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
 | id | BIGINT | PK, AUTO_INCREMENT | |
 | test_result_id | BIGINT | NOT NULL, FK → test_results.id | Indexed |
-| artifact_type | ENUM | NOT NULL | screenshot \| video \| trace \| log \| other |
-| file_name | VARCHAR(500) | NOT NULL | Original filename |
-| storage_type | ENUM | NOT NULL | local \| s3 |
-| url | VARCHAR(1000) | NOT NULL | Serve path (local) or S3/CDN URL |
-| size_bytes | INT | | |
+| display_name | VARCHAR(255) | NOT NULL | From CTRF `attachment.name` (e.g. "screenshot", "trace") |
+| file_name | VARCHAR(500) | | Original filename for uploaded files; NULL for url type |
+| content_type | VARCHAR(100) | NOT NULL | MIME type from CTRF (e.g. "image/png", "video/webm") |
+| artifact_type | ENUM | NOT NULL | screenshot \| video \| trace \| log \| html_report \| other |
+| storage_type | ENUM | NOT NULL | local \| s3 \| url |
+| storage_key | VARCHAR(1000) | NOT NULL | For local/s3: relative storage path key. For url: the external URL (Loom, YouTube, etc.) |
+| size_bytes | BIGINT | | NULL for url type |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | |
 
 ---
@@ -960,3 +962,121 @@ button.htmx-request {
 **What is deferred:** The skeleton shimmer component (for Dashboard KPI cards and large content areas) requires CSS animation work and is explicitly not part of the initial implementation. The `hx-indicator` hooks will be in place; only the visual style of `.htmx-indicator` inside those elements is left as a TODO.
 
 **What is not permitted:** A full-page NProgress-style bar, spinner overlays that cover interactive content, or any loading state that blocks user interaction with unrelated parts of the page.
+
+---
+
+### DD-014 — Test artifact storage uses an abstracted ArtifactStorage interface; local disk for MVP, S3-compatible for scale-out; external URLs are stored by reference only
+
+**Decision:** Test artifacts (screenshots, videos, traces, HTML reports) are stored via an `ArtifactStorage` interface that has two concrete implementations selected by the `ARTIFACT_STORAGE` env var. External URLs (Loom, YouTube, CI artifact links) are never downloaded — they are stored as `storage_type: 'url'` references and rendered client-side.
+
+**ArtifactStorage interface:**
+
+```typescript
+interface ArtifactStorage {
+  // Store a file buffer, return the storage key
+  store(key: string, buffer: Buffer, contentType: string): Promise<void>;
+  // Return a URL the browser can fetch (signed URL for S3, direct route for local)
+  getUrl(key: string, expiresInSeconds?: number): Promise<string>;
+  // Delete a file (called by retention sweep)
+  delete(key: string): Promise<void>;
+  // Delete all files under a prefix (e.g. all artifacts for a run)
+  deletePrefix(prefix: string): Promise<void>;
+}
+
+// Storage key convention: orgs/{orgId}/runs/{runId}/results/{resultId}/{filename}
+// This prefix structure enables deletePrefix() to clean up an entire run in one call
+```
+
+**Implementations:**
+
+| `ARTIFACT_STORAGE` | Class | Notes |
+|---|---|---|
+| `local` (default) | `LocalArtifactStorage` | Files at `ARTIFACT_LOCAL_PATH` (default `/data/artifacts`); served via `GET /api/files/*` Fastify route; no CDN |
+| `s3` | `S3ArtifactStorage` | Any S3-compatible endpoint (`S3_ENDPOINT`, `S3_BUCKET`, `S3_KEY`, `S3_SECRET`); works with AWS S3, Cloudflare R2, MinIO |
+
+**Playwright artifact handling:**
+
+Playwright is the most common CTRF source. It emits the following attachment types which must all be handled:
+
+| Playwright artifact | CTRF `contentType` | `artifact_type` | Rendering |
+|---|---|---|---|
+| Screenshot | `image/png` | `screenshot` | Inline `<img>` thumbnail; lightbox on click |
+| Video recording | `video/webm` | `video` | `<video controls>` in failure detail row |
+| Trace file | `application/zip` | `trace` | Download link + "Open in Trace Viewer" button |
+| HTML report bundle | `application/zip` or `text/html` | `html_report` | Opens in new tab at `/runs/:id/report/` |
+
+**Playwright Trace Viewer deep link:**
+
+Playwright's trace viewer (`trace.playwright.dev`) accepts a `?trace=` URL parameter pointing to the trace zip file. CTRFHub generates this link dynamically:
+
+```
+https://trace.playwright.dev/?trace={storageUrl}
+```
+
+Where `{storageUrl}` is either:
+- A pre-signed S3 URL (when `ARTIFACT_STORAGE=s3`)
+- The direct Fastify file serve URL (when `ARTIFACT_STORAGE=local` — requires CTRFHub to be publicly accessible from the user's browser, which it must be to use the UI at all)
+
+The "Open in Trace Viewer" button is shown on any artifact where `artifact_type = 'trace'` and `content_type = 'application/zip'`.
+
+**HTML report bundle handling:**
+
+Playwright HTML reports are multi-file zips (`index.html` + data JSON + assets). When uploaded:
+1. Server detects `artifact_type = html_report` + `content_type = application/zip`
+2. Unzips to `{ARTIFACT_LOCAL_PATH}/orgs/{orgId}/runs/{runId}/html-report/` (or S3 prefix)
+3. `index.html` and assets served at `/runs/:runId/report/` via static file route
+4. Opened in a new browser tab (not an iframe — Playwright HTML reports have their own navigation)
+
+Single-file `text/html` attachments are served in a sandboxed `<iframe>`.
+
+**Ingest flow — multipart upload:**
+
+```
+POST /api/v1/projects/:slug/runs
+Content-Type: multipart/form-data
+
+[field] ctrf            ← CTRF JSON (required)
+[file]  screenshot.png  ← matches attachment.path in CTRF (optional)
+[file]  video.webm      ← matches attachment.path in CTRF (optional)
+[file]  trace.zip       ← matches attachment.path in CTRF (optional)
+```
+
+Processing order:
+1. Parse and validate CTRF JSON
+2. Create `test_runs` + `test_results` rows
+3. For each `attachment` in each test result:
+   - If `path` starts with `http://` or `https://` → store as `storage_type: 'url'`, `storage_key: path`
+   - Otherwise → match `path` to an uploaded file part, store via `ArtifactStorage`, create `test_artifacts` row
+4. Broadcast `run.created` SSE event
+
+**File size limits:**
+
+| Content type | Per-file limit | Rationale |
+|---|---|---|
+| `image/*` | 10 MB | Screenshots are never this large in practice |
+| `video/webm`, `video/mp4` | 100 MB | Short Playwright recordings |
+| `application/zip` (trace, HTML report) | 200 MB | Large Playwright traces with network data |
+| `text/*` (logs) | 5 MB | Log files rarely exceed this |
+| Per-run total | 1 GB | Configurable via `MAX_ARTIFACT_SIZE_PER_RUN` env var |
+
+Files exceeding the per-file limit return `413 Payload Too Large` with a message. Files exceeding the per-run total are rejected after the run row is created — the run still appears but the oversized attachment is omitted with a warning flag on the `test_artifacts` row.
+
+**External video links (Loom, YouTube, Sentry replays):**
+
+When `storage_type = 'url'`, CTRFHub detects the domain and renders appropriately:
+
+| Domain pattern | Rendering |
+|---|---|
+| `loom.com` | Loom embed (`<iframe src="https://www.loom.com/embed/{id}">`) |
+| `youtube.com`, `youtu.be` | YouTube embed |
+| `vimeo.com` | Vimeo embed |
+| Everything else | Plain `<a>` link with external link icon |
+
+**Retention integration:**
+
+The nightly retention sweep (PL-006) deletes artifact files alongside their parent runs:
+1. Identify `test_runs` rows to delete (age > retention_days, not milestone-protected)
+2. For each run, call `artifactStorage.deletePrefix('orgs/{orgId}/runs/{runId}/')` before deleting DB rows
+3. Then delete DB rows (cascades to `test_artifacts`)
+
+This ensures orphaned files never accumulate on disk or in S3.
