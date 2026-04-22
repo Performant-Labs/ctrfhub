@@ -635,3 +635,46 @@ Merging them into a single table would require nullable columns for each model's
 **Decision:** The Dashboard screen shows metrics for the currently selected project only. There is no cross-project org-level dashboard in the MVP.
 
 **Rationale:** An org-level dashboard requires aggregating across projects with potentially different reporting cadences, environments, and team contexts. The complexity is not justified for MVP. A project-level dashboard covers the primary persona's (QA lead / developer) core workflow. Org-level analytics can be added as a future Business Edition feature.
+
+---
+
+### DD-009 — Settings use a hybrid storage model: typed columns for core fields, JSONB for preferences; auto-saved via per-field PATCH
+
+**Decision:** Settings storage follows a two-tier hybrid model:
+
+1. **Typed columns** — fields that are queried in JOINs, used as foreign keys, need DB-level type enforcement, or drive core system behavior (`slug`, `name`, `id_prefix`, `plan`, etc.) remain as normal typed columns on their entity table.
+2. **`settings JSONB` column** — all preferences, toggles, and display options that do not need indexing or cross-table JOINs are stored in a single `settings JSONB` column on the entity row. Each entity that carries preferences (`organizations`, `projects`, `user_profiles`) gets one such column, defaulting to `{}`.
+3. **`config JSONB` column** — structured third-party credentials (Slack webhook URL, Jira API token, SMTP config) live in a `config JSONB` column on their integration-specific table (`org_integrations`, `sso_configurations`), not on the org row itself.
+
+**Auto-save pattern:** There is no Save button anywhere in Settings. Every field persists immediately on change. The implementation contract is:
+
+- **Toggles / dropdowns** → `PATCH` fires on the `change` event.
+- **Text inputs** → `PATCH` fires on `blur` or after a 600 ms debounce on `keyup` (whichever comes first). This prevents a network call on every keystroke.
+- **Inline feedback** → each field shows a per-field "Saving…" spinner → "Saved ✓" confirmation. No toast notifications for settings writes.
+
+**API design:** One narrow `PATCH` endpoint per settings group, not one monolithic endpoint. The body contains only the changed key(s):
+
+```
+PATCH /api/v1/settings/org/general          { "name": "Acme Corp" }
+PATCH /api/v1/settings/org/general          { "settings": { "default_timezone": "UTC" } }
+PATCH /api/v1/settings/projects/:slug       { "id_prefix": "E2E" }
+PATCH /api/v1/settings/user/profile         { "settings": { "timezone": "America/Los_Angeles" } }
+PATCH /api/v1/settings/user/notifications   { "event": "run_failed", "channel": "email", "enabled": true }
+```
+
+**JSONB atomic update:** Updating a single key in a JSONB column uses the PostgreSQL merge operator, which leaves all other keys untouched:
+
+```sql
+UPDATE organizations
+SET    settings = settings || '{"default_timezone": "America/Los_Angeles"}'::jsonb
+WHERE  id = ?;
+```
+
+**MikroORM entity convention:** Each entity with a `settings` JSONB column declares it as:
+
+```typescript
+@Property({ type: 'json', default: '{}' })
+settings: Record<string, unknown> = {};
+```
+
+Specific preference keys are validated in the route handler (Zod schema), not at the ORM layer, keeping the column flexible for future additions without requiring a migration.
