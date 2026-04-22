@@ -720,3 +720,144 @@ Fastify streams SSE via `reply.raw` with no extra library. The event payload is 
 **Scope:** SSE is active only on org-level and project-level settings pages. Personal settings (Profile, Security, Notifications, API Keys) carry no SSE connection — only one user can edit their own personal settings.
 
 **Failure mode:** If the SSE connection drops, the client shows stale data until reconnect. The optimistic locking layer ensures any subsequent PATCH from a stale client is rejected safely rather than silently overwriting a newer value.
+
+---
+
+### DD-011 — Real-time screen updates on run ingest use SSE + an EventBus abstraction
+
+**Decision:** When a CTRF test run is ingested, all browser sessions currently viewing an affected screen are notified via the same SSE infrastructure established in DD-010. The ingest handler communicates through an `EventBus` abstraction rather than writing directly to SSE connections, enabling transparent substitution of a Redis Pub/Sub backend for horizontal scaling without changing ingest logic.
+
+**Affected screens and update behaviour:**
+
+| Screen | Event | Behaviour |
+|---|---|---|
+| Test Runs list | `run.created` | Shows a sticky "↑ N new run(s) — click to load" banner; does not auto-insert (avoids disrupting users reading the list) |
+| Dashboard | `run.created` | Silent auto-update of KPI cards and trend chart via HTMX partial re-render |
+| Project list | `run.created` | Silent update of the affected project row (last run timestamp + status badge) |
+| Milestones *(Business)* | `run.created` | Silent update of the milestone progress bar if `run.milestone_id` is set |
+| Test Run Detail | — | Not applicable; runs are complete batches on ingest; no in-flight streaming in MVP |
+
+**SSE channel:** One persistent stream per authenticated user per org — `GET /api/sse/orgs/:orgId`. All event types (settings changes from DD-010 AND data events) flow through this single stream. The client filters by `event:` type.
+
+**Event format:**
+
+```
+event: run.created
+data: {"projectId":42,"projectSlug":"frontend-e2e","runId":891,"status":"failed","passRate":0.94}
+```
+
+**HTMX wiring examples:**
+
+```html
+<!-- Dashboard KPI cards — silent auto-update -->
+<div id="kpi-cards"
+     hx-get="/projects/frontend-e2e/dashboard/kpis"
+     hx-trigger="sse:run.created"
+     hx-swap="outerHTML">
+
+<!-- Project list row — targeted row update -->
+<tr id="project-row-42"
+    hx-get="/projects/frontend-e2e/row"
+    hx-trigger="sse:run.created[detail.projectId==42]"
+    hx-swap="outerHTML">
+
+<!-- Test Runs list — deferred banner (not silent) -->
+<div id="new-run-banner" class="hidden">
+  ↑ 1 new run — click to load
+</div>
+```
+
+**EventBus abstraction:**
+
+The ingest handler calls `eventBus.publish()` — never the SSE registry directly. For MVP (single node) the bus is an in-memory emitter. For multi-node deployments, the bus implementation is swapped to Redis Pub/Sub with no changes to the ingest handler.
+
+```typescript
+interface EventBus {
+  publish(channel: string, event: string, data: object): Promise<void>;
+  subscribe(channel: string, handler: (event: string, data: object) => void): void;
+}
+
+// MVP: in-memory
+// Production scale-out: Redis Pub/Sub
+```
+
+---
+
+### DD-012 — SSE connections and API endpoints are rate-limited and capacity-bounded; self-hosted deployments require a reverse proxy
+
+**Decision:** CTRFHub enforces resource limits at three layers: the reverse proxy, the Fastify application layer, and per-SSE-connection accounting. "Allow until it falls over" is explicitly rejected — unbounded connections make the server trivially resource-exhaustible and a DDoS target.
+
+**Layer 1 — Reverse proxy (Nginx / Caddy)**
+
+Required for all production deployments. CTRFHub ships a reference Nginx/Caddy config in its Docker Compose bundle. Requests violating these limits never reach Node.js:
+
+- `limit_conn`: max 20 concurrent connections per IP
+- `limit_req`: max 50 requests/sec per IP (burst: 20)
+- SSE routes: `proxy_read_timeout 3600s` (long-lived) but still count against `limit_conn`
+
+**Layer 2 — Fastify application rate limits (`@fastify/rate-limit`)**
+
+| Endpoint class | Limit | Rationale |
+|---|---|---|
+| Login / forgot-password | 10 req/min per IP | Brute force / credential stuffing protection |
+| CTRF ingest (`POST /runs`) | 120 req/hour per project token | Guards against CI misconfiguration floods |
+| Settings `PATCH` | 60 req/min per authenticated user | Auto-save debounce already reduces volume |
+| SSE `GET /api/sse/*` | 1 new connection per user per 2s | Prevents rapid reconnect amplification |
+| General authenticated API | 600 req/min per user | Generous for normal interactive use |
+
+**Layer 3 — SSE connection accounting**
+
+Each open SSE connection holds a file descriptor and ~50–100 KB of Node.js memory. Limits are enforced in the SSE route handler before the stream is opened:
+
+| Limit | Value | Enforcement |
+|---|---|---|
+| Per user (tabs / devices) | 10 concurrent connections | In-memory counter: `userId → count` |
+| Per org (Community Edition) | 50 concurrent connections | Hard cap; not license-derived |
+| Per org (Business Edition) | `license.seats × 5` | Uses existing `licenses.seats` column |
+| Server-wide hard cap | 5,000 connections | Returns `503 Service Unavailable` above this |
+| Max connection age | 1 hour | Server closes cleanly; client reconnects silently |
+| Keepalive ping interval | 30 seconds | Detects dead connections and triggers cleanup |
+
+When a user opens an 11th tab, the oldest SSE connection for that user is closed gracefully. When an org reaches its limit, new SSE connect requests return `429 Too Many Requests` — the page still loads and functions normally, it simply does not receive live push updates until a slot frees.
+
+**Connection lifecycle (Fastify):**
+
+```typescript
+fastify.get('/api/sse/orgs/:orgId', async (request, reply) => {
+  // 1. Authenticate session
+  // 2. Verify org membership
+  // 3. Enforce per-user limit
+  const userConnections = sseUserCounts.get(userId) ?? 0;
+  if (userConnections >= 10)
+    return reply.status(429).send({ error: 'too_many_tabs' });
+
+  // 4. Enforce per-org limit
+  const orgLimit = license.plan === 'business' ? license.seats * 5 : 50;
+  const orgConnections = sseOrgCounts.get(orgId) ?? 0;
+  if (orgConnections >= orgLimit)
+    return reply.status(429).send({ error: 'org_connection_limit' });
+
+  // 5. Register and stream
+  sseUserCounts.set(userId, userConnections + 1);
+  sseOrgCounts.set(orgId, orgConnections + 1);
+  reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream',
+                              'Cache-Control': 'no-cache',
+                              'X-Accel-Buffering': 'no' });
+
+  // 6. Max age — force reconnect after 1 hour
+  const maxAge = setTimeout(() => reply.raw.end(), 3_600_000);
+
+  // 7. Keepalive ping every 30s
+  const ping = setInterval(() => reply.raw.write(': keepalive\n\n'), 30_000);
+
+  // 8. Cleanup on disconnect
+  request.raw.on('close', () => {
+    sseUserCounts.set(userId, Math.max(0, (sseUserCounts.get(userId) ?? 1) - 1));
+    sseOrgCounts.set(orgId, Math.max(0, (sseOrgCounts.get(orgId) ?? 1) - 1));
+    clearTimeout(maxAge);
+    clearInterval(ping);
+  });
+});
+```
+
+**DDoS surface summary:** All SSE endpoints require a valid authenticated session — unauthenticated SSE connections are rejected at step 1 before any stream is opened. The ingest endpoint requires a valid project token. The only unauthenticated attack surface is the login page and the health check endpoint, both of which are covered by the reverse proxy `limit_req` rule.
