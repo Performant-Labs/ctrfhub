@@ -155,8 +155,10 @@ One row per individual test case within a run. Write-once; rows are never re-par
 | stack_trace | TEXT | | |
 | retry_count | TINYINT | NOT NULL, DEFAULT 0 | Number of retries |
 | assigned_to | BIGINT | FK → users.id (Better Auth) | Nullable; person responsible for fixing |
-| ai_category | ENUM | | app_defect \| test_data \| script_error \| environment \| unknown |
-| ai_category_overridden | BOOLEAN | NOT NULL, DEFAULT FALSE | True if a user manually changed the AI category |
+| ai_category | ENUM | | `app_defect \| test_data \| script_error \| environment \| unknown`; NULL = not yet categorized or test is not `failed`; see DD-016 |
+| ai_category_override | ENUM | | User's manual choice; same enum values as `ai_category`; NULL = no override. **Takes precedence over `ai_category` for display.** Preserves original AI prediction alongside user correction. |
+| ai_category_model | VARCHAR(100) | | Model that produced the categorization, e.g. `gpt-4o-mini`; NULL until run |
+| ai_category_at | TIMESTAMPTZ | | When AI categorization completed; NULL = not yet run |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | |
 
 ---
@@ -1173,3 +1175,139 @@ The `data-pct` attribute is set server-side in the Eta template — no JavaScrip
 - Any env var containing `SECRET`, `PASSWORD`, `KEY`, or `TOKEN`
 
 **Deferred:** Growth trend ("disk will fill in X months") requires daily `system_snapshots` rows written by the nightly worker. This is tracked as PL-008. The System page renders without it — that section is simply omitted from the MVP.
+
+---
+
+### DD-016 — AI failure categorization: schema, async trigger, rate limiting, and manual override
+
+**Decision:** AI categorization is an MVP feature for failed tests. It runs asynchronously after ingest via the EventBus so the `201` response is never delayed. The schema stores both the original AI prediction and any manual override as separate columns so neither is lost.
+
+---
+
+#### Schema (on `test_results`)
+
+| Column | Type | Notes |
+|---|---|---|
+| `ai_category` | ENUM\|NULL | AI's prediction. Values: `app_defect \| test_data \| script_error \| environment \| unknown`. NULL = not yet run, or test is not `failed`. Never overwritten by user action. |
+| `ai_category_override` | ENUM\|NULL | User's manual choice. Same enum values. NULL = no override. **Takes precedence over `ai_category` for all display purposes.** Preserved across re-ingest. |
+| `ai_category_model` | VARCHAR(100)\|NULL | Model identifier, e.g. `gpt-4o-mini`, `llama-3.3-70b`. Stored for auditability and A/B analysis. NULL until categorized. |
+| `ai_category_at` | TIMESTAMPTZ\|NULL | When categorization completed. NULL = not yet run. |
+
+**Why two columns instead of one?** A single `ai_category` column overwritten by the user permanently destroys the original AI prediction. Separate columns enable: (a) showing a "Manually set" indicator in the UI, (b) analytics on override rate (proxy for AI accuracy), (c) re-running AI on a result without losing the user's correction.
+
+**Display logic:**
+```
+effectiveCategory = ai_category_override ?? ai_category
+
+if effectiveCategory is not null:
+  show category chip
+  if ai_category_override is not null: show "Manual" badge
+  else: show "AI" badge
+else if test.status === 'failed' and AI_PROVIDER is configured:
+  show "Pending" chip (grey)
+else if test.status === 'failed' and AI_PROVIDER is not configured:
+  show nothing (column hidden entirely if no AI key)
+else:
+  show nothing (passed/skipped tests are not categorized)
+```
+
+---
+
+#### Which tests get categorized
+
+- Only tests with `status = 'failed'`
+- Passing and skipped tests are never sent to the AI provider
+- Cap: **500 failed tests per run**. If a run has more than 500 failures, the first 500 (by `id` asc) are categorized; the rest are left NULL. This prevents runaway API spend on pathological runs.
+- If `AI_PROVIDER` env var is not set: all categorization columns remain NULL; no API calls are made; the UI omits the category column entirely.
+
+---
+
+#### Async trigger — EventBus `run.ingested`
+
+The `201` response is sent immediately after the run and results are persisted to the database. AI categorization runs asynchronously:
+
+```
+POST /api/v1/projects/:slug/runs
+  │
+  ├── Validate CTRF JSON (Zod)
+  ├── Persist test_runs row
+  ├── Bulk insert test_results rows (chunked, setImmediate yields)
+  ├── reply.code(201).send({ runId })          ← client unblocked here
+  └── eventBus.publish('ai', 'run.ingested', {
+          runId,
+          orgId,
+          failedResultIds: [...]
+      })                                       ← non-blocking
+
+AiCategorizerService (subscriber on 'ai' channel):
+  ├── Receives run.ingested event
+  ├── Fetches up to 500 failed results
+  ├── Batches results into AI provider requests (10-20 per call)
+  ├── Updates ai_category, ai_category_model, ai_category_at per result
+  └── eventBus.publish('sse', 'run.updated', { orgId, runId })
+          └── SSE registry pushes { event: 'run:updated', runId } to browser
+                  └── HTMX refreshes category chips without full page reload
+```
+
+**Why EventBus (not BullMQ, not polling)?**
+- Uses the existing `EventBus` interface already designed in DD-011
+- For MVP (single-node, `EVENT_BUS=memory`): categorizer runs in the `api` process — no extra infrastructure
+- For scale-out (`EVENT_BUS=redis`): the `run.ingested` event routes to the `worker` container via Redis Pub/Sub — **zero code change in the categorizer**
+- SQLite deployments (in-process `node-cron`): same EventBus path; categorizer is just another subscriber
+- If the process restarts mid-categorization: a startup sweep queries `test_results WHERE status = 'failed' AND ai_category IS NULL AND ai_category_override IS NULL AND created_at > NOW() - 24h` and re-queues those results
+
+---
+
+#### Batching AI requests
+
+Sending one API call per failed test is expensive and slow. Tests are batched:
+
+```typescript
+// Prompt structure (simplified)
+const prompt = `
+Categorize each test failure as one of:
+  app_defect, test_data, script_error, environment, unknown
+
+Return a JSON array in the same order as the inputs.
+
+Tests:
+${results.map((r, i) => `[${i}] ${r.testName}\n${r.errorMessage}\n${r.stackTrace?.slice(0, 500)}`).join('\n---\n')}
+`;
+// Parse response: [{index, category}, ...]
+```
+
+Batch size: **20 results per API call** (balances context window usage vs. round trips).
+For 500 failures: ~25 API calls per run.
+
+---
+
+#### Manual override route
+
+```
+PATCH /api/v1/runs/:runId/results/:resultId/category
+Body: { category: 'app_defect' }  // or null to clear the override
+Auth: session cookie (viewer cannot override; org member can)
+
+Response: 200 { effectiveCategory, source: 'manual' | 'ai' | null }
+```
+
+HTMX: the Run Detail page uses `hx-patch` on the category dropdown. The response is an HTML partial replacing just the category chip — no page reload.
+
+**Survives re-ingest:** `ai_category_override` is keyed to the `test_results.id`. A re-ingested run creates a new `test_runs` row with new `test_results` rows — overrides do not transfer. "Survives re-ingest" in `product.md` means the override persists for the lifetime of the result row, not across different ingest calls.
+
+---
+
+#### Startup recovery query (avoids lost work on process restart)
+
+```sql
+SELECT id, test_name, error_message, stack_trace
+FROM test_results
+WHERE status = 'failed'
+  AND ai_category IS NULL
+  AND ai_category_override IS NULL
+  AND created_at > NOW() - INTERVAL '24 hours'
+ORDER BY id ASC
+LIMIT 500;
+```
+
+Run once at startup (after migrations). Re-queues any results that were mid-flight when the process last stopped.
