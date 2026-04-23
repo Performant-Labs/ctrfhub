@@ -86,3 +86,11 @@ publish_output_progress = false
 [litellm]
 # Let LiteLLM retry on transient failures before falling back
 drop_params = true
+
+[github_action_config]
+# Tell the action runner to fire review/describe/improve on ALL trigger events,
+# including synchronize (new commits pushed to an existing PR). Without this
+# section, PR-Agent skips synchronize with "Skipping action: synchronize".
+auto_review  = true
+auto_describe = true
+auto_improve  = false   # code suggestions are noisy; enable when codebase is past MVP
