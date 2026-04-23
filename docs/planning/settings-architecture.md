@@ -221,7 +221,7 @@ Org-level outbound integrations. Project-level webhooks are separate (Project â†
 
 ---
 
-### 2.7 Audit Log *(Business Edition)*
+### 2.8 Audit Log *(Business Edition)*
 *Testiny equivalent: Audit log*
 
 Read-only event log. Matches Testiny's implementation closely.
@@ -240,7 +240,7 @@ Features: filterable by area/user/date range, Export all (CSV), configurable ret
 
 ---
 
-### 2.8 Billing
+### 2.9 Billing
 *Testiny equivalent: Billing*
 
 | Section | Notes |
@@ -255,7 +255,7 @@ Features: filterable by area/user/date range, Export all (CSV), configurable ret
 
 ---
 
-### 2.9 Support
+### 2.10 Support
 *Testiny equivalent: Support*
 
 Static page with links:
@@ -358,7 +358,7 @@ Progress bar rendered with CSS (no JS required): width = `used / total * 100%`. 
 
 ---
 
-### 2.10 About
+### 2.12 About
 *Testiny equivalent: About*
 
 Read-only instance info:
