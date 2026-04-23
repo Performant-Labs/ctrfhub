@@ -59,6 +59,7 @@ CTRFHub runs as a multi-container Docker Compose application. Responsibilities a
 - Runs BullMQ workers when queue-based ingest is enabled (PL-003 scale-out)
 - Shares the same codebase as `api` but with a different entrypoint: `node dist/worker.js`
 - Separate container ensures a slow retention sweep never delays API response times
+- **Does NOT run database migrations** — only the `api` entrypoint calls `migrator.up()`. Worker startup assumes migrations have already been applied.
 
 ### `db` — PostgreSQL
 - All application data
@@ -148,6 +149,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      api:
+        condition: service_started  # ensures migrations have run before worker boots
+        # TODO(issue #10): upgrade to service_healthy once GET /health is implemented
 
   db:
     image: postgres:16-alpine

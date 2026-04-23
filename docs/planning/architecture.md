@@ -24,7 +24,7 @@
 | **Database (dev/single-node)** | SQLite via `better-sqlite3` |
 | **File uploads** | `@fastify/multipart` |
 | **Static assets** | `@fastify/static` |
-| **Rate limiting** | `@fastify/rate-limit` (keyed on API token hash for `/api/ingest`) |
+| **Rate limiting** | `@fastify/rate-limit` (keyed on `x-api-token` value for ingest routes; per-IP for UI routes) |
 | **Artifact storage** | Local filesystem (default); S3/MinIO-compatible (optional, via env) |
 
 ---
@@ -81,7 +81,7 @@ npm install
 
 # 2. Copy env template
 cp .env.example .env
-# Edit .env — set BETTER_AUTH_SECRET, choose SQLITE or Postgres dialect
+# Edit .env — set SESSION_SECRET and PUBLIC_URL at minimum; choose SQLITE or Postgres dialect
 
 # 3. Start the full dev stack
 docker compose -f compose.dev.yml up
@@ -183,20 +183,22 @@ Stage 2 — runner
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `BETTER_AUTH_SECRET` | ✅ | — | Random 32-byte secret for session signing |
-| `BETTER_AUTH_URL` | ✅ | — | Public base URL (e.g. `https://ctrfhub.example.com`) |
+| `SESSION_SECRET` | ✅ | — | Min 32-char random string; signs session cookies |
+| `PUBLIC_URL` | ✅ | — | Public base URL (e.g. `https://ctrfhub.example.com`); used for auth redirects |
 | `DATABASE_URL` | Postgres only | — | `postgresql://user:pass@db:5432/ctrfhub` |
 | `SQLITE_PATH` | SQLite only | `/data/ctrfhub.db` | Path inside container |
-| `RETENTION_DAYS` | ❌ | `90` | Days before old runs are pruned |
-| `AI_PROVIDER` | ❌ | — | `openai` / `groq` / `anthropic` |
+| `RETENTION_CRON_SCHEDULE` | ❌ | `0 2 * * *` | Cron schedule for the nightly retention sweep; retention period is configured per org/project in the UI, not via env var |
+| `AI_PROVIDER` | ❌ | — | `openai` \| `groq` \| `anthropic` |
 | `AI_API_KEY` | ❌ | — | API key for the chosen AI provider |
 | `AI_MODEL` | ❌ | — | Model name (e.g. `gpt-4o-mini`) |
-| `STORAGE_TYPE` | ❌ | `local` | `local` or `s3` |
+| `ARTIFACT_STORAGE` | ❌ | `local` | `local` \| `s3` |
 | `S3_ENDPOINT` | S3 only | — | MinIO or S3 endpoint URL |
 | `S3_BUCKET` | S3 only | — | Bucket name for artifacts |
-| `S3_ACCESS_KEY` | S3 only | — | |
-| `S3_SECRET_KEY` | S3 only | — | |
+| `S3_KEY` | S3 only | — | Access key ID |
+| `S3_SECRET` | S3 only | — | Secret access key |
 | `PORT` | ❌ | `3000` | HTTP port the app listens on |
+
+> **Authoritative reference:** `deployment-architecture.md` § Environment variables is the canonical list. This table covers the variables most relevant to initial setup.
 
 ### Reverse proxy
 
@@ -236,17 +238,25 @@ server {
 
 ### Migrations in production
 
-Migrations run automatically at container startup before the server begins accepting requests:
+Migrations run automatically at container startup, but **only in the `api` container** (`dist/server.js`). The `worker` container (`dist/worker.js`) must never call `migrator.up()`.
 
 ```typescript
-// src/index.ts
+// src/server.ts  — api container entrypoint ONLY
 const orm = await MikroORM.init(config);
 const migrator = orm.getMigrator();
-await migrator.up();   // run pending migrations
+await migrator.up();   // run pending migrations — api entrypoint only
 await startServer();
+
+// src/worker.ts  — worker container entrypoint
+// ❌ Do NOT call migrator.up() here.
+// The worker depends_on the api container being started,
+// which guarantees migrations have already run.
+await startWorker();
 ```
 
-This is safe for single-instance deployments. For multi-instance deployments, run migrations as a separate init container.
+**Why this matters:** Both `api` and `worker` start from the same image. If both called `migrator.up()` simultaneously, they would race to acquire MikroORM's advisory lock on the `mikro_orm_migrations` table. The race itself is safe (PostgreSQL advisory lock prevents double-execution), but the losing container will block at startup and may time out before the lock is released on very large migration sets.
+
+For HA multi-instance deployments (multiple `api` replicas), run migrations as a dedicated one-shot init container before starting the app containers.
 
 ---
 
@@ -272,8 +282,10 @@ push to main
 
 - name: Push report to CTRFHub
   run: |
-    curl -X POST ${{ vars.CTRFHUB_URL }}/api/ingest \
-      -H "Authorization: Bearer ${{ secrets.CTRFHUB_TOKEN }}" \
+    curl -X POST ${{ vars.CTRFHUB_URL }}/api/v1/projects/${{ vars.CTRFHUB_PROJECT_SLUG }}/runs \
+      -H "x-api-token: ${{ secrets.CTRFHUB_TOKEN }}" \
       -H "Content-Type: application/json" \
       -d @ctrf-report.json
 ```
+
+`CTRFHUB_TOKEN` is a project-scoped API token generated in CTRFHub project settings. `CTRFHUB_PROJECT_SLUG` is the URL slug of the project (shown in project settings).

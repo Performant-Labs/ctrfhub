@@ -89,15 +89,15 @@ The Community Edition is the open-source core of CTRFHub, licensed under MIT. It
 **Goal:** Accept a valid CTRF JSON report from a CI pipeline or file upload and store it persistently.
 
 **User stories:**
-- As a CI pipeline, I can `POST /api/ingest` with a Bearer token and a CTRF JSON body, so that test results are captured automatically after every run.
+- As a CI pipeline, I can `POST /api/v1/projects/:slug/runs` with an `x-api-token` header and a CTRF JSON body, so that test results are captured automatically after every run.
 - As a developer, I can upload a CTRF JSON file via the web UI, so that I can import historical reports without a CI setup.
 - As a CI engineer, I can generate a project-scoped API token in the UI and use it in my pipeline, so that each project's data is isolated.
 
 **Acceptance criteria:**
-- `POST /api/ingest` with a valid `Authorization: Bearer <token>` header and valid CTRF JSON returns `201 { runId }`.
-- Invalid CTRF JSON returns `400` with a human-readable Zod validation error.
+- `POST /api/v1/projects/:slug/runs` with a valid `x-api-token: <token>` header and valid CTRF JSON returns `201 { runId }`.
+- Invalid CTRF JSON returns `422` with a human-readable Zod validation error.
 - Missing or invalid token returns `401`.
-- Ingest endpoint accepts both `application/json` (raw body) and `multipart/form-data` (file upload).
+- Ingest endpoint accepts both `application/json` (raw body) and `multipart/form-data` (CTRF JSON field plus optional artifact file parts — see Feature 4).
 - File upload via the web UI produces the same stored record as a direct API call.
 
 ---
@@ -143,16 +143,18 @@ The Community Edition is the open-source core of CTRFHub, licensed under MIT. It
 **Goal:** Associate screenshots, videos, traces, and logs with individual test results.
 
 **User stories:**
-- As a developer, I can upload a screenshot or video via `POST /api/artifact` and link it to a test result, so that visual evidence of failures is preserved.
-- As a QA lead, I can view and download artifacts from the test detail view, so that I can reproduce failures without re-running tests.
-- As a CI engineer, I can embed artifact references directly in the CTRF JSON (using the CTRF `attachments` field), so that the reporter and the upload step are combined.
+- As a CI engineer, I can include artifact files (screenshots, videos, traces) as additional file parts in the same multipart ingest `POST`, so that visual evidence of failures is captured alongside test results without a separate upload step.
+- As a CI engineer, I can embed external video URLs (e.g. Loom, YouTube, Vimeo) in the CTRF JSON `attachments` field, so that long-form recordings are referenced without uploading large files to CTRFHub.
+- As a QA lead, I can view and download artifacts directly from the test detail view, so that I can reproduce failures without re-running tests.
 
 **Acceptance criteria:**
-- `POST /api/artifact` accepts `multipart/form-data` with `file` + `testId` fields; returns `{ artifactId, url }`.
-- Artifacts stored locally are served from `GET /artifacts/:id` with correct `Content-Type`.
-- Artifacts stored in S3/MinIO are returned as a pre-signed URL with a 1-hour expiry.
-- Test detail view lists all associated artifacts with type icons (screenshot / video / trace / log).
-- Maximum artifact file size: 50 MB (configurable via `MAX_ARTIFACT_SIZE_MB` env).
+- Multipart `POST /api/v1/projects/:slug/runs` accepts a `ctrf` JSON field plus zero or more artifact file parts; file part names are matched to `attachment.path` values in the CTRF JSON.
+- There is no separate `/api/artifact` endpoint — artifacts are always submitted with the run that owns them.
+- External URL attachments (`attachment.path` starting with `http://` or `https://`) are stored by reference only; no file is uploaded to CTRFHub storage.
+- Locally stored artifacts are served from `GET /api/files/*` with the correct `Content-Type`.
+- S3-stored artifacts are returned as pre-signed URLs with a 1-hour expiry.
+- Test detail view lists all associated artifacts with type icons (screenshot / video / trace / html_report / log).
+- Per-file size limits enforced (returns `413`): images 10 MB, video 100 MB, zip files 200 MB, logs 5 MB. Per-run total configurable via `MAX_ARTIFACT_SIZE_PER_RUN` (default: 1 GB).
 
 ---
 
