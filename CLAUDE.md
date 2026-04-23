@@ -37,7 +37,7 @@ Stack: Node.js 22 LTS · Fastify · TypeScript (strict) · Zod · MikroORM v7 (P
 
 Located at `~/Sites/ai_guidance/` on developer machines (Performant Labs repo). PR-Agent in CI does not have this path — the relevant rules are already inlined/cited inside `skills/`. Key inherited standards:
 
-- **Three-Tier Verification Hierarchy** for page testing: Tier 1 Headless (curl/supertest, 1–5 s) → Tier 2 Structural ARIA (Playwright accessibility tree, 5–10 s) → Tier 3 Visual (Playwright screenshots, 60–90 s). **Tier 3 never runs before Tier 2 is green.** Full rule in `skills/page-verification-hierarchy.md`.
+- **Three-Tier Verification Hierarchy** for page testing: Tier 1 Headless (`curl` / `fastify.inject()` / cheerio, 1–5 s) → Tier 2 Structural ARIA (Playwright accessibility tree, 5–10 s) → Tier 3 Visual (Playwright screenshots, 60–90 s). **Tier 3 never runs before Tier 2 is green.** Full rule in `skills/page-verification-hierarchy.md`.
 - Fastify, MikroORM, HTMX, Better Auth, Tailwind, Vitest conventions — each has a dedicated skill that cites its org-wide source.
 
 ## Default agent posture
