@@ -64,7 +64,9 @@ Inspired by Reporter Engine’s strengths (real-time dashboards, AI analysis, ar
    - Secure viewing/download in the UI.
 
 5. **Authentication & Multi-Project**
-   - Simple email-invitation auth (admin + viewer roles).
+   - Single-admin-per-org by default (bootstrap via `/setup` wizard — DD-020 — or CLI `bootstrap-admin --force`); **email-invitation multi-user onboarding deferred to PL-011** (Phase 2 / Business Edition).
+   - Password reset (DD-021) and email verification (DD-022) shipped in MVP.
+   - Admin + Viewer roles present in schema for forward compatibility; effectively Admin-only until PL-011 promotes.
    - Project-scoped API tokens (generated in the UI, stored hashed) for CI ingestion — `Authorization: Bearer <token>` on `POST /api/ingest`.
    - Multi-project support (one instance for multiple teams/repos).
 

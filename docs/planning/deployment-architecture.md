@@ -46,12 +46,12 @@ CTRFHub runs as a multi-container Docker Compose application. Responsibilities a
 **Why Caddy over Nginx:** Automatic HTTPS with zero cert management. Self-hosters who aren't ops engineers benefit significantly. Nginx config is provided as an alternative in `docker/nginx/` for teams that already run Nginx.
 
 ### `api` — Fastify application server
-- Serves the UI (Nunjucks templates via HTMX)
+- Serves the UI (Eta templates via HTMX)
 - REST API (`/api/v1/...`)
 - SSE endpoint (`/api/sse/...`)
 - CTRF ingest endpoint (`POST /api/v1/projects/:slug/runs`)
 - `GET /api/files/*` — local artifact serving; rate-limited to 300 req/min per session user (only active when `ARTIFACT_STORAGE=local`)
-- `GET /health` — unauthenticated health check for Docker, load balancers, and Kubernetes probes
+- `GET /health` — unauthenticated readiness check for Docker, load balancers, and Kubernetes probes. Returns 503 during boot/migration and 200 once `bootState = ready` (see `architecture.md` → Health endpoint for the full state machine)
 - Does **not** run cron jobs or background processing
 - Stateless — can be scaled horizontally behind the proxy (with Redis EventBus for SSE)
 
@@ -119,25 +119,31 @@ services:
       - SESSION_SECRET
       - EVENT_BUS           # memory | redis
       - REDIS_URL           # required when EVENT_BUS=redis
-      - MAX_PAYLOAD_SIZE    # default: 10mb (PL-003)
+      - MAX_CTRF_JSON_SIZE       # default: 10mb (PL-003) — caps the `ctrf` JSON field
+      - MAX_ARTIFACT_SIZE_PER_RUN # default: 1gb — caps the multipart total (all file parts + JSON)
       - ARTIFACT_STORAGE    # local | s3 (default: local)
       - ARTIFACT_LOCAL_PATH # default: /data/artifacts
+      - ARTIFACT_PUBLIC_URL # optional — separate artifact origin for GitHub-grade cookie isolation (DD-028 I2)
       - S3_ENDPOINT         # required when ARTIFACT_STORAGE=s3
       - S3_BUCKET
       - S3_KEY
       - S3_SECRET
       - PORT                # default: 3000
+      - DEFAULT_TIMEZONE    # default: UTC (IANA zone fallback — DD-025)
     volumes:
       - artifacts_data:/data/artifacts  # only used when ARTIFACT_STORAGE=local
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
+      # /health is readiness-shaped: returns 503 while bootState ∈ {booting, migrating}
+      # and 200 only when bootState = ready. See architecture.md → Health endpoint.
+      # start_period is a fallback; the real migration guarantee is the 503 contract.
       test: ["CMD-SHELL", "wget -qO- http://localhost:$$PORT/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 30s  # allow time for migrations to complete on first boot
+      start_period: 30s  # fallback for slow cold-boot Postgres; migrations may exceed this on large DBs
 
   worker:
     build: .
@@ -204,16 +210,27 @@ Redis uses a Docker Compose **profile** (`scale-out`) so it's not started for st
 | `SESSION_SECRET` | ✓ | — | Min 32 chars; used to sign session cookies |
 | `EVENT_BUS` | | `memory` | `memory` \| `redis` |
 | `REDIS_URL` | When `EVENT_BUS=redis` | — | e.g. `redis://redis:6379` |
-| `MAX_PAYLOAD_SIZE` | | `10mb` | CTRF ingest body size limit (PL-003) |
+| `MAX_CTRF_JSON_SIZE` | | `10mb` | Cap on the `ctrf` JSON field within a multipart ingest (enforced by `@fastify/multipart` `fields.limits.fieldSize`). Protects the event loop from large `JSON.parse()` calls — see PL-003. Applies equally to `application/json` (raw body) ingest. |
+| `MAX_ARTIFACT_SIZE_PER_RUN` | | `1gb` | Cap on the total size of a single multipart ingest request (JSON + all artifact file parts). Applied as Fastify `bodyLimit` on the ingest route. Per-content-type file limits are configured separately in application code — see `database-design.md` §artifact-ingest. |
 | `ARTIFACT_STORAGE` | | `local` | `local` \| `s3` |
 | `ARTIFACT_LOCAL_PATH` | | `/data/artifacts` | Root path for local artifact storage |
 | `S3_ENDPOINT` | When `ARTIFACT_STORAGE=s3` | — | e.g. `https://s3.amazonaws.com` or MinIO URL |
 | `S3_BUCKET` | When `ARTIFACT_STORAGE=s3` | — | Bucket name |
 | `S3_KEY` | When `ARTIFACT_STORAGE=s3` | — | Access key ID |
 | `S3_SECRET` | When `ARTIFACT_STORAGE=s3` | — | Secret access key |
+| `ARTIFACT_CORS_ORIGINS` | | `https://trace.playwright.dev` | Comma-separated list of origins allowed to fetch artifact URLs cross-origin. Required so the Playwright Trace Viewer can load zips from CTRFHub. Applied via `@fastify/cors` on the local artifact route; operators running `ARTIFACT_STORAGE=s3` must mirror this list into the bucket's CORS configuration (script: `scripts/apply-s3-cors.sh`). See `database-design.md` → Playwright artifact handling → CORS requirements. |
+| `ARTIFACT_PUBLIC_URL` | | (unset) | Optional separate origin for serving user-uploaded artifacts (DD-028 I2). When set (e.g. `https://artifacts.ctrfhub.example.com`), the app rewrites rendered artifact URLs to point at that origin and emits `Cross-Origin-Resource-Policy: cross-origin` on artifact responses; operator configures their reverse proxy to route `/api/files/*` and `/runs/*/report/` on that subdomain back to the CTRFHub backend. Provides GitHub-grade cookie-jar isolation — XSS in artifact content cannot reach the main-app session cookie because the session cookie is domain-scoped to the main origin. When unset, artifacts serve from the main CTRFHub origin with DD-028 I3–I7 as the defence (still robust; the separate origin is an opt-in upgrade). See `docs/ops/artifact-origin.md` for nginx and Caddy snippets. |
+| `AI_PROVIDER` | | — | `openai` \| `anthropic` \| `groq`. When unset, all AI features are hidden. |
+| `AI_API_KEY` | When `AI_PROVIDER` is set | — | Provider API key |
+| `AI_MODEL` | | Provider-specific default | Override default model (e.g. `gpt-4o-mini`) |
+| `AI_CLOUD_PIPELINE` | | `off` | `off` \| `on`. When `off`, no managed-provider calls are made even if `AI_PROVIDER` / `AI_API_KEY` are set — infrastructure-level kill switch for regulated deployments. When `on`, an org admin must still ack the per-org consent dialog before any calls occur. See `ai-features.md` → Privacy and consent. |
+| `ALLOW_PRIVATE_WEBHOOK_DESTINATIONS` | | `false` | When `true`, outbound webhooks (DD-018) may target private IP ranges (RFC 1918, loopback, link-local). Off by default to block SSRF; enable only if a self-hoster routes webhooks through an internal proxy. |
+| `ALLOW_INSECURE_WEBHOOK_DESTINATIONS` | | `false` | When `true`, outbound webhooks may use `http://` URLs. Intended for local development only. |
+| `PUBLIC_URL` | | — | Canonical public URL of this CTRFHub instance (e.g. `https://ctrfhub.example.com`). Used to construct run-detail URLs in outbound webhook payloads. When unset, the `url` field is omitted rather than emitted as `localhost`. |
 | `PORT` | | `3000` | Internal Fastify port (proxy forwards to this) |
 | `LOG_LEVEL` | | `info` | `debug` \| `info` \| `warn` \| `error` |
-| `RETENTION_CRON_SCHEDULE` | | `0 2 * * *` | Cron expression for nightly retention sweep (2am) |
+| `DEFAULT_TIMEZONE` | | `UTC` | IANA zone identifier (e.g. `America/Los_Angeles`, `Europe/Berlin`). Fallback when neither `users.settings.timezone` nor `organizations.settings.default_timezone` is set. See DD-025 for the full hierarchy (user > org > env > UTC) and the "which surface renders in which TZ" table. Only IANA names accepted; abbreviations like `PST` / `IST` rejected at boot. |
+| `RETENTION_CRON_SCHEDULE` | | `0 3 * * *` | Cron expression for nightly retention sweep. Defaults to 03:00 UTC — the cron's trigger time is UTC regardless of `DEFAULT_TIMEZONE` (no DST transitions in UTC means the cron fires exactly once per day year-round). The cron's *cutoff calculation* resolves in org TZ per DD-025 — orthogonal to trigger time. |
 
 ---
 
@@ -272,9 +289,57 @@ The separate `worker` container is a **PostgreSQL-only concern**. PostgreSQL han
 ### SQLite limitations
 
 - Single-user or very small teams only (< 5 concurrent users)
-- Not suitable for teams running more than ~50 CI runs/day (use PostgreSQL instead)
+- Not suitable at scale — see "When to graduate to PostgreSQL" below for the threshold and signals
 - No horizontal scaling — SQLite is single-file, single-process
 - Migrations still run automatically at `api` startup (same as PostgreSQL)
+
+### SQLite writer contention with the AI pipeline
+
+The AI pipeline (DD-017) adds a new class of write traffic on top of CTRF ingest: short reservation updates on `ai_pipeline_log`, 15-second heartbeat updates while a stage is running, and per-result category writes back to `test_results` from A1. On SQLite these all contend for the single writer lock together with ingest and UI writes. WAL mode (enabled by default) lets readers proceed during writes but does not lift the one-writer-at-a-time rule.
+
+**Per-run write budget (estimated):**
+
+| Source | Writes per run | Shape |
+|---|---|---|
+| CTRF ingest | 1 + N (N = result count, up to 500 chunked) | One transaction per chunk |
+| A1 categorize — reservation, heartbeat, commit | ~3 + N/20 | Short single-row updates + N/20 chunked batches for per-result updates |
+| A2 correlate — reservation, heartbeat, commit + 1 JSONB write to `test_runs` | ~4 | Small single-row updates |
+| A3 summarize — reservation, heartbeat, commit + 1 text write to `test_runs` | ~4 | Small single-row updates |
+| A4 anomaly — reservation, heartbeat, commit + 0–K inserts into `ai_anomalies` | ~3 + K | Small inserts |
+| Sweeper (every 60s) | ~0–2 | Usually no-op; short updates |
+
+For a representative run with 100 results the total write count is ~115 statements across ~30 seconds of wall time. Most are single-row updates that finish in <5ms on WAL-mode SQLite on modest hardware. The heartbeat cadence (15s × up to 4 stages sequentially) adds ~2–4 writes/minute per in-flight run — comfortably below any contention threshold.
+
+**What breaks first under load:**
+
+1. **Concurrent ingest bursts.** Ten CI jobs finishing at the same second each producing a 500-result upload will serialise on the SQLite writer lock. p99 ingest latency climbs from <500ms to several seconds.
+2. **A1 per-result update fan-out.** For a 500-failure run, A1 writes ~25 chunked UPDATEs back to `test_results`. If two such runs are processing in parallel their A1 batches interleave and block ingest writes.
+3. **UI writes colliding with the above.** Comments, assignments, and category overrides from several users feel laggy during ingest bursts.
+
+The heartbeat / sweeper traffic from DD-017 is not what breaks first — it is small, single-row, and naturally spread across seconds.
+
+### When to graduate to PostgreSQL
+
+SQLite is the right choice when **all** of these hold:
+
+| Signal | SQLite ceiling |
+|---|---|
+| CI runs ingested per day | ≤ 200 runs/day |
+| Peak concurrent ingests (within any 60s window) | ≤ 3 |
+| Concurrent active users (UI writes) | ≤ 5 |
+| Average results per run | ≤ 500 |
+| Concurrent AI pipeline runs in-flight | ≤ 5 |
+
+Graduate to PostgreSQL when any of these hold, or when one of these observable signals appears for > 24 hours:
+
+- p99 ingest latency (`POST /api/v1/projects/:slug/runs`) > 2000ms
+- `ai_pipeline_log` rows routinely sitting in `pending` with `attempt > 0` (reservation contention: the sweeper is re-enqueuing before a worker got to it)
+- `SQLITE_BUSY` errors in the Fastify logs at a rate > 1/min
+- Noticeable UI write latency (> 500ms for comment creation or assignment) reported by users
+
+**These numbers are planning estimates, not measurements.** They should be replaced with empirical values once load-testing (`load-testing-strategy.md`) covers the AI pipeline path — currently that scenario is not in scope (see gap-review item #17). The intent here is to give a solo-VPS operator a defensible "you're fine up to here; start planning PG above here" line, not a guaranteed ceiling.
+
+Migration path: a one-time `sqlite3 → pg_dump → psql` export is documented in the operations runbook (to be written). No schema changes are required — MikroORM uses the same schema for both drivers.
 
 ---
 

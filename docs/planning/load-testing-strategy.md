@@ -333,6 +333,76 @@ Run duration: **10 minutes minimum.** Short runs hide slow memory leaks that com
 
 ---
 
+### 7. AI pipeline burst and back-pressure
+
+**What it stresses:** The AI pipeline (A1–A4) under sustained ingest load, with the managed-provider client stubbed to isolate CTRFHub-side behaviour from real LLM latency. Validates DD-017 (reserve-execute-commit + heartbeat + sweeper) end-to-end, the ceiling for in-flight AI pipeline rows on SQLite (`deployment-architecture.md` → SQLite graduation thresholds), and `@fastify/cors` behaviour on artifact URLs (gap-review item #10).
+
+**Stubbed provider:** the test harness runs with `AI_PROVIDER=mock` — a test-only provider that returns a seeded response after a configurable latency drawn from `N(μ=800ms, σ=300ms)` with a 5% chance of a 2-second tail and a 2% chance of a 429 rate-limit response. This matches the observed distribution of real managed-provider responses without test runs costing money or hitting rate limits.
+
+**Scenario A — categorization burst:**
+
+```javascript
+// k6/scenarios/ai-pipeline-burst.js
+export const options = {
+  scenarios: {
+    ingest_burst: {
+      executor: 'ramping-arrival-rate',
+      startRate: 1,
+      timeUnit: '1s',
+      preAllocatedVUs: 10,
+      maxVUs: 30,
+      stages: [
+        { target: 5,  duration: '1m' },   // warm up
+        { target: 30, duration: '2m' },   // burst — 30 ingests/sec
+        { target: 30, duration: '5m' },   // sustain
+        { target: 1,  duration: '1m' },   // cool down
+      ],
+    },
+  },
+  thresholds: {
+    'http_req_duration{endpoint:ingest}': ['p(95)<2000'],
+    'ai_pipeline_categorize_age_ms': ['p(95)<30000'],
+    'ai_pipeline_pending_depth': ['max<200'],
+    'ai_pipeline_failed_rate': ['rate<0.01'],
+  },
+};
+```
+
+Each ingest uploads a 200-failure CTRF payload so A1 has real batching work (10 chunks × 20 results).
+
+**Scenario B — crash-recovery:**
+
+1. Start Scenario A.
+2. At T+3m (steady state), kill the worker container: `docker kill ctrfhub_worker`.
+3. Wait 30 seconds, restart: `docker start ctrfhub_worker`.
+4. Watch `ai_pipeline_log` for rows that were `running` when the worker died — they must transition to `pending` within 2 minutes (heartbeat timeout) and complete within 5 minutes of restart. No run should stay in `analyzing` state indefinitely.
+
+**Scenario C — CORS preflight burst:**
+
+Separate from A/B. Issues 100 req/sec of `OPTIONS` preflights and `GET` range requests against `/api/files/*` with `Origin: https://trace.playwright.dev` to verify the CORS config does not allocate (no per-request re-parsing of origin list) and that `Content-Range`/`Accept-Ranges` responses stream without buffering.
+
+**Probed metrics (custom k6 `Trend` / `Counter`):**
+
+| Metric | Source | Pass condition |
+|---|---|---|
+| `ai_pipeline_categorize_age_ms` | `NOW() - ai_pipeline_log.started_at` for completed A1 rows | p95 < 30s, p99 < 60s |
+| `ai_pipeline_pending_depth` | `COUNT(*) FROM ai_pipeline_log WHERE status='pending'` | max < 200 during burst; returns to < 10 within 2m of cool-down |
+| `ai_pipeline_failed_rate` | `SUM(status='failed') / COUNT(*)` | < 1% (above this, the 3-retry policy isn't absorbing normal jitter) |
+| `run_analyzing_duration_ms` | `NOW() - test_runs.created_at` for runs where `ai_summary IS NULL AND ai_root_causes IS NULL` | p99 < 5m; no run stuck > 10m |
+| `cors_preflight_duration_ms` | `http_req_duration{endpoint:options}` | p99 < 50ms |
+| `sqlite_busy_rate` (SQLite only) | Fastify log scrape | < 1/min |
+
+**Pass conditions:**
+
+- API ingest p95 does not regress > 20% compared to Scenario 1 (ingest flood without AI pipeline active). If it does, the AI pipeline writes are colliding with ingest writes — re-check SQLite graduation thresholds.
+- No `ai_pipeline_log` row sits in `pending` with `attempt >= 3` at end of run (the sweeper should have terminal-failed them).
+- In Scenario B, every run ingested before the kill has `ai_summary IS NOT NULL` within 5 minutes of worker restart.
+- In Scenario C, zero preflight failures and zero Range-request buffer allocations (verify with `docker stats` memory stability).
+
+**Graduation signal:** if any of the pass conditions fail repeatedly on a deployment sized per the SQLite ceiling (`deployment-architecture.md` → SQLite graduation thresholds), that is the empirical signal to either (a) raise the ceiling numbers if the bottleneck is something other than writer contention, or (b) leave the ceiling as-is and graduate to PostgreSQL. This is the mechanism to replace the currently-estimated SQLite thresholds with measured values (see gap-review item #8).
+
+---
+
 ## autocannon — development benchmarks
 
 Use autocannon for quick per-route sanity checks during development, before committing a route change:

@@ -18,9 +18,33 @@ Users supply their own API key via env vars. CTRFHub is provider-agnostic:
 | `AI_API_KEY` | Provider API key |
 | `AI_MODEL` | Optional model override (e.g. `gpt-4o-mini`) |
 
+### Privacy and consent
+
+**AI features are OFF by default — even when `AI_PROVIDER` is configured.** The pipeline will not send a single request to a managed LLM provider until an org admin has explicitly acknowledged what gets sent and where. This matters because CTRF stack traces, error messages, and test names routinely contain PII (user emails in fixture data), proprietary source paths, and — in the `script_error` case — snippets of application or test code.
+
+**Two-gate consent model:**
+
+1. **Deployment gate (`AI_CLOUD_PIPELINE`).** `AI_CLOUD_PIPELINE=off` (the default when unset) disables all managed-provider calls unconditionally, even if `AI_PROVIDER` and `AI_API_KEY` are set. Self-hosters in regulated environments (GDPR, HIPAA, classified, air-gapped) set this once at the infrastructure layer and no org admin can override it. Set to `on` to allow per-org opt-in. A future value `AI_CLOUD_PIPELINE=local` will allow local-inference providers (Ollama, llama.cpp) — out of scope for MVP.
+2. **Per-org gate (acknowledgement).** When `AI_CLOUD_PIPELINE=on`, the first time an org admin opens any AI-dependent screen they see a consent dialog listing exactly what data leaves the instance (`test_name`, `error_message`, first 500 chars of `stack_trace`, category metadata), which provider receives it (derived from `AI_PROVIDER`), and the provider's data-retention policy link. Acknowledgement is persisted as `organizations.ai_cloud_ack_at` + `ai_cloud_ack_by` (columns added in a follow-up migration). Categorization is blocked for that org's runs until ack is recorded.
+
+**Kill switch:** the acknowledgement can be withdrawn from Org Settings → AI. Withdrawal clears `ai_cloud_ack_at`, halts in-flight AI pipeline rows (sweeper terminal-fails them on next tick), and hides AI columns/cards until re-acknowledged. Previously-written AI columns (`ai_category`, `ai_root_causes`, etc.) are retained — withdrawal is prospective, not a historical purge. A separate "Purge AI-derived data" action is available for the full wipe.
+
+**Data residency:** the `deployment-architecture.md` deployment docs carry a data-residency note identifying which provider endpoints receive traffic per `AI_PROVIDER` value (OpenAI: `api.openai.com`, US; Anthropic: `api.anthropic.com`, US; Groq: `api.groq.com`, US). Self-hosters with EU-only requirements must use local inference (future `AI_CLOUD_PIPELINE=local`) or disable AI features.
+
+**What is sent per stage:**
+
+| Stage | Payload |
+|---|---|
+| A1 categorize | `test_name`, `error_message`, `stack_trace[:500]` per failed result (batched 20/call) |
+| A2 correlate | All failed results in a run: `test_name`, `error_message`, `stack_trace[:500]` |
+| A3 summarize | Aggregate metrics + A1 category distribution + A2 cluster labels — **no raw test names or error text** |
+| A4 anomaly | Aggregate metrics only across the last 30 runs — **no individual test data** |
+
+A3 and A4 are materially less sensitive than A1/A2. A future setting may allow "A3/A4 only" (summarization and trend analysis without sending raw failure text), but it is not in scope for MVP.
+
 Default models (when `AI_MODEL` is not set):
 - OpenAI: `gpt-4o-mini` (fast, cheap, good for categorization)
-- Anthropic: `claude-haiku-3-5`
+- Anthropic: `claude-haiku-4-5-20251001`
 - Groq: `llama-3.3-70b-versatile`
 
 If no provider is configured: all AI features are silently disabled; UI hides AI columns and cards entirely — no errors, no "configure AI" nagging on every page.
@@ -320,20 +344,34 @@ eventBus.subscribe('ai', 'run.ai_summarized',  detectAnomalies);
 
 **Error handling:** Each stage catches exceptions, logs them, and publishes the next event anyway (with `partial: true` flag if data is incomplete). A run with a failed A2 stage still gets a best-effort A3 summary using only A1 data.
 
-**Retry:** Failed API calls retry up to 3 times with exponential backoff (1s, 4s, 16s). After 3 failures, the result is left NULL and the stage is marked `failed` in a lightweight `ai_pipeline_log` table.
+**Retry:** Failed API calls retry up to 3 times with exponential backoff (1s, 4s, 16s). After 3 attempts, the row is marked `failed` in `ai_pipeline_log` and the next stage is still published (with `partial: true`).
 
-```sql
-CREATE TABLE ai_pipeline_log (
-  id           BIGINT PRIMARY KEY,
-  test_run_id  BIGINT NOT NULL REFERENCES test_runs(id),
-  stage        VARCHAR(20) NOT NULL,   -- 'categorize' | 'correlate' | 'summarize' | 'anomaly'
-  status       ENUM('pending', 'running', 'done', 'failed') NOT NULL,
-  error        TEXT,
-  started_at   TIMESTAMPTZ,
-  completed_at TIMESTAMPTZ,
-  tokens_used  INT                     -- for cost tracking
-);
-```
+### Durability and restart recovery (A1–A4)
+
+The EventBus is fire-and-forget (in-memory MVP; Redis Pub/Sub at scale). On its own, a worker crash mid-stage would leave the run in an indefinite "analyzing" state with no resume path. The `ai_pipeline_log` table is therefore the **source of truth for pipeline scheduling**: the EventBus signals "consider scheduling", but workers reserve and commit work against rows in that table.
+
+See [DD-017 — AI pipeline stages A2–A4 are table-driven with reserve-execute-commit semantics](database-design.md#dd-017--ai-pipeline-stages-a2a4-are-table-driven-with-reserve-execute-commit-semantics-so-crashes-never-lose-a-job) for the full schema and row-lifecycle walkthrough. The short version:
+
+- Each stage handler upserts a row in `ai_pipeline_log` using `INSERT … ON CONFLICT(test_run_id, stage) DO NOTHING`, then atomically reserves it (`UPDATE … SET status='running', worker_id=…, heartbeat_at=NOW(), attempt=attempt+1 WHERE status='pending' AND attempt<3`).
+- While executing, the worker heartbeats `heartbeat_at` every 15s.
+- On success: `status='done'`, `completed_at=NOW()`, `tokens_used=:n`, then publish the next event (e.g. `run.ai_categorized`).
+- On transient failure and `attempt < 3`: release the row (`status='pending'`) so the sweeper re-enqueues after backoff.
+- On terminal failure (`attempt = 3`): `status='failed'`; the next stage is still triggered with degraded input.
+
+**Recovery on boot** — before the worker subscribes to EventBus:
+1. Release rows whose owning worker crashed: `UPDATE ai_pipeline_log SET status='pending', worker_id=NULL, heartbeat_at=NULL WHERE status='running' AND (heartbeat_at IS NULL OR heartbeat_at < NOW() - INTERVAL '2 minutes')`.
+2. For every `pending` row attached to a run created in the last 24h, publish the event that triggers that stage. The normal handler then reserves and executes.
+
+**Stuck-stage sweeper** — every 60 seconds:
+- Same crashed-worker reclaim query as (1) above.
+- Any `pending` row with `attempt >= 3` is terminal-failed so the run can unstick and downstream stages can run with `partial: true`.
+
+**Idempotency guard** — before each stage calls the LLM, it checks whether the stage's primary output is already persisted (e.g. `correlate` checks `test_runs.ai_root_causes_at IS NOT NULL`). If so, the stage marks the `ai_pipeline_log` row `done` and publishes the next event without re-calling the LLM. This closes the narrow window where a crash lands between "primary write committed" and "ai_pipeline_log row marked done" — a normal recovery event would otherwise pay for the LLM call twice.
+
+**Graceful shutdown (SIGTERM):**
+- Stop reserving new rows.
+- Finish any row already past the LLM-returned / primary-write-committed boundary (fast path to `done` + next event).
+- Release the rest: `status='pending', worker_id=NULL, heartbeat_at=NULL`.
 
 The `ai_pipeline_log` table also powers the System Status page — admins can see AI pipeline health and token consumption.
 
