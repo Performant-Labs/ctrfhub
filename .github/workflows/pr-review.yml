@@ -17,6 +17,11 @@ concurrency:
   # Cancel in-flight reviews when a newer commit lands — no point reviewing stale code.
   cancel-in-progress: true
 
+env:
+  # Opt into Node.js 24 now — Node 20 actions deprecated, forced June 2026.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+
 jobs:
   pr-agent:
     # Skip bot-authored events, and skip drafts unless someone triggered a slash command.
