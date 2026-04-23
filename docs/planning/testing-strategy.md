@@ -48,7 +48,9 @@ src/
         ├── embed-type-detect.test.ts
         ├── pass-rate.test.ts
         ├── run-id-format.test.ts
-        └── disk-bar-level.test.ts
+        ├── disk-bar-level.test.ts
+        ├── ai-category-display.test.ts  ← effectiveCategory(), badge source ('ai'|'manual'|null)
+        └── ai-batch-splitter.test.ts    ← splitIntoBatches(results, 20): chunk boundary logic
 ```
 
 ### Example
@@ -96,6 +98,7 @@ export interface AppOptions {
   db?: string;                        // ':memory:' for tests
   artifactStorage?: ArtifactStorage; // inject test double
   eventBus?: EventBus;               // inject test double
+  aiProvider?: AiProvider;           // inject test double; omit to disable AI pipeline in tests
 }
 
 export async function buildApp(opts: AppOptions = {}) { ... }
@@ -115,7 +118,8 @@ src/
         ├── artifacts.test.ts        ← upload, serve, delete
         ├── auth.test.ts             ← login, session, token auth
         ├── rate-limit.test.ts       ← 429 responses, per-token limits
-        └── system-status.test.ts    ← GET /org/settings/system
+        ├── system-status.test.ts    ← GET /org/settings/system
+        └── ai-pipeline.test.ts      ← A1 categorization, A2 correlation, A3 summary, pipeline chain
 ```
 
 ### Example — ingest route
@@ -315,6 +319,132 @@ curl -X POST https://staging.ctrfhub.io/api/v1/projects/ctrfhub-e2e/runs \
   -H "x-api-token: $CTRF_INGEST_TOKEN" \
   -H "content-type: application/json" \
   -d @e2e/ctrf/report.json
+```
+
+---
+
+---
+
+## Testing AI Features
+
+The `AiProvider` is injected via `buildApp()` — same pattern as `ArtifactStorage` and `EventBus`. Integration tests never make real network calls to an AI provider.
+
+### `MockAiProvider` test double
+
+```typescript
+// src/__tests__/doubles/mock-ai-provider.ts
+import type { AiProvider, CategoryResult, ClusterResult, FailureInput } from '../../lib/ai/ai-provider.interface';
+
+export class MockAiProvider implements AiProvider {
+  calls: { method: string; input: unknown }[] = [];
+
+  async categorizeFailures(results: FailureInput[]): Promise<CategoryResult[]> {
+    this.calls.push({ method: 'categorizeFailures', input: results });
+    return results.map(r => ({ id: r.id, category: 'app_defect' as const }));
+  }
+
+  async correlateRootCauses(failures: FailureInput[]): Promise<ClusterResult[]> {
+    this.calls.push({ method: 'correlateRootCauses', input: failures });
+    return [{ label: 'Mock root cause', category: 'app_defect', confidence: 0.9,
+              resultIds: failures.map(f => f.id), explanation: 'Canned response.' }];
+  }
+
+  async generateRunSummary(): Promise<string> {
+    this.calls.push({ method: 'generateRunSummary', input: null });
+    return 'Mock run summary.';
+  }
+}
+```
+
+### Integration test example — AI pipeline chain
+
+```typescript
+// src/__tests__/integration/ai-pipeline.test.ts
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { buildApp } from '../../app';
+import { MemoryEventBus } from '../../lib/event-bus/memory';
+import { MockAiProvider } from '../doubles/mock-ai-provider';
+import { failedCtrfReport, passingCtrfReport } from '../fixtures/ctrf';
+
+describe('AI pipeline', () => {
+  let app: Awaited<ReturnType<typeof buildApp>>;
+  let ai: MockAiProvider;
+
+  beforeAll(async () => {
+    ai = new MockAiProvider();
+    app = await buildApp({ testing: true, db: ':memory:',
+                           eventBus: new MemoryEventBus(), aiProvider: ai });
+  });
+  afterAll(() => app.close());
+
+  it('calls categorizeFailures for each failed test after ingest', async () => {
+    await app.inject({ method: 'POST', url: '/api/v1/projects/demo/runs',
+      headers: { 'x-api-token': 'token-001' }, payload: failedCtrfReport });
+    // MemoryEventBus processes events synchronously in tests
+    const calls = ai.calls.filter(c => c.method === 'categorizeFailures');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('does not call AI for passing tests', async () => {
+    ai.calls.length = 0;
+    await app.inject({ method: 'POST', url: '/api/v1/projects/demo/runs',
+      headers: { 'x-api-token': 'token-001' }, payload: passingCtrfReport });
+    expect(ai.calls).toHaveLength(0);
+  });
+
+  it('runs stages in order: categorize → correlate → summarize', async () => {
+    await app.inject({ method: 'POST', url: '/api/v1/projects/demo/runs',
+      headers: { 'x-api-token': 'token-001' }, payload: failedCtrfReport });
+    const methods = ai.calls.map(c => c.method);
+    expect(methods.indexOf('categorizeFailures'))
+      .toBeLessThan(methods.indexOf('correlateRootCauses'));
+    expect(methods.indexOf('correlateRootCauses'))
+      .toBeLessThan(methods.indexOf('generateRunSummary'));
+  });
+
+  it('skips AI pipeline entirely when aiProvider is not configured', async () => {
+    const noAiApp = await buildApp({ testing: true, db: ':memory:' }); // no aiProvider
+    await noAiApp.inject({ method: 'POST', url: '/api/v1/projects/demo/runs',
+      headers: { 'x-api-token': 'token-001' }, payload: failedCtrfReport });
+    await noAiApp.close();
+    // test: ai_category columns remain NULL; no error thrown
+  });
+});
+```
+
+### Unit tests for AI display logic
+
+```typescript
+// src/__tests__/unit/ai-category-display.test.ts
+import { describe, it, expect } from 'vitest';
+import { getEffectiveCategory, getCategorySource } from '../../lib/ai/display';
+
+describe('getEffectiveCategory', () => {
+  it('returns override when set', () =>
+    expect(getEffectiveCategory('environment', 'app_defect')).toBe('app_defect'));
+  it('returns ai_category when no override', () =>
+    expect(getEffectiveCategory('environment', null)).toBe('environment'));
+  it('returns null when both are null', () =>
+    expect(getEffectiveCategory(null, null)).toBeNull());
+});
+
+describe('getCategorySource', () => {
+  it('returns manual when override is set', () =>
+    expect(getCategorySource('environment', 'app_defect')).toBe('manual'));
+  it('returns ai when only ai_category is set', () =>
+    expect(getCategorySource('environment', null)).toBe('ai'));
+  it('returns null when both null', () =>
+    expect(getCategorySource(null, null)).toBeNull());
+});
+```
+
+### Rule: never make real AI API calls in tests
+
+```
+❌ Do not call real OpenAI / Anthropic / Groq endpoints in unit or integration tests.
+❌ Do not use nock/MSW to intercept AI provider HTTP — use MockAiProvider instead.
+✅ MockAiProvider returns deterministic canned responses; tests are fast and free.
+✅ Real provider is exercised only in manual staging smoke tests.
 ```
 
 ---

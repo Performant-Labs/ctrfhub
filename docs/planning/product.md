@@ -123,18 +123,26 @@ The Community Edition is the open-source core of CTRFHub, licensed under MIT. It
 
 #### Feature 3 — AI-Powered Failure Analysis
 
-**Goal:** Automatically categorize test failures to reduce manual triage time. Requires a user-supplied AI provider API key (bring-your-own).
+**Goal:** Turn a wall of red test failures into 3–5 actionable insights in under 60 seconds. Three integrated AI features ship at launch; all require a user-supplied API key (bring-your-own). See `ai-features.md` for the full AI strategy including Phase 2 and Business Edition features.
 
 **User stories:**
+
+*A1 — Per-test failure categorization:*
 - As a QA lead, I can see an AI-generated failure category (App Defect / Test Data / Script Error / Environment / Unknown) on each failed test, so that I can prioritize fixes without reading every stack trace.
-- As a developer, I can override the AI category with a manual label, so that the record reflects ground truth.
-- As a team, the manual override is saved per test result and survives re-ingestion of the same run.
+- As a developer, I can override the AI category with a manual label; the original AI prediction is preserved so I can see where AI was wrong.
+
+*A2 — Root cause correlation:*
+- As a QA lead, when a run has 200 failures, I can see them grouped into root cause clusters ("Database timeout — 147 tests", "Null pointer in UserProfile — 41 tests"), so that I know I am dealing with 2 problems, not 200.
+
+*A3 — Run narrative summary:*
+- As a QA lead, I can read a 3–5 sentence plain English summary at the top of each run, so that I can decide whether to investigate in under 10 seconds without opening a single test.
 
 **Acceptance criteria:**
-- AI categorization runs asynchronously after ingest — it does not block the `201` response.
-- Category is displayed in the test detail view within 30 seconds of ingest for runs with up to 500 failed tests.
-- Manual override saves immediately on selection (HTMX POST, no page reload).
-- If no AI provider is configured (`AI_PROVIDER` env not set), the category column shows "Not configured" — no errors.
+- All AI features run asynchronously after ingest — the `201` response is never delayed.
+- A1 (categorization) is complete within 30 seconds of ingest for runs with up to 500 failed tests.
+- A2 (root cause clusters) and A3 (run narrative) are available within 60 seconds of ingest.
+- Manual category override saves immediately via HTMX partial swap; original AI prediction preserved in `ai_category`; override in `ai_category_override`.
+- If `AI_PROVIDER` env is not set: all AI columns and cards are hidden — no errors, no nagging.
 
 ---
 

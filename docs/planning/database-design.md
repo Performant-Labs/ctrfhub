@@ -137,6 +137,10 @@ A single execution of a test suite against a project. Holds cached aggregate cou
 | failed | INT | NOT NULL, DEFAULT 0 | Cached aggregate |
 | skipped | INT | NOT NULL, DEFAULT 0 | Cached aggregate |
 | blocked | INT | NOT NULL, DEFAULT 0 | Cached aggregate |
+| ai_root_causes | JSONB | | Root cause clusters from A2 (see `ai-features.md`); NULL until A2 runs or if run has no failures |
+| ai_root_causes_at | TIMESTAMPTZ | | When A2 completed; NULL = not yet run |
+| ai_summary | TEXT | | Plain English run narrative from A3 (see `ai-features.md`); NULL until A3 completes |
+| ai_summary_at | TIMESTAMPTZ | | When A3 completed; NULL = not yet run |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | |
 
 ### 4.5 test_results
@@ -159,6 +163,8 @@ One row per individual test case within a run. Write-once; rows are never re-par
 | ai_category_override | ENUM | | User's manual choice; same enum values as `ai_category`; NULL = no override. **Takes precedence over `ai_category` for display.** Preserves original AI prediction alongside user correction. |
 | ai_category_model | VARCHAR(100) | | Model that produced the categorization, e.g. `gpt-4o-mini`; NULL until run |
 | ai_category_at | TIMESTAMPTZ | | When AI categorization completed; NULL = not yet run |
+| flaky_score | FLOAT | | 0.0–1.0 flakiness score (A8, Phase 2); computed by nightly worker; NULL until first calculation. > 0.7 = likely flaky |
+| error_hash | VARCHAR(64) | | SHA-256 of normalized `error_message`; used for cross-run failure matching (A6). NULL if `error_message` is empty |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | |
 
 ---
@@ -194,6 +200,43 @@ Free-text comments on individual test results. Supports the post-run triage work
 | body | TEXT | NOT NULL | Comment content (plain text or Markdown) |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | |
 | updated_at | TIMESTAMP | NOT NULL | |
+
+---
+
+### 4.8 ai_pipeline_log
+
+One row per AI pipeline stage per run. Records timing, status, and token usage for observability (System Status page) and startup recovery (see DD-016).
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| id | BIGINT | PK, AUTO_INCREMENT | |
+| test_run_id | BIGINT | NOT NULL, FK → test_runs.id | Indexed |
+| stage | VARCHAR(20) | NOT NULL | `categorize` \| `correlate` \| `summarize` \| `anomaly` |
+| status | ENUM | NOT NULL | `pending` \| `running` \| `done` \| `failed` |
+| error | TEXT | | Error message if status = `failed` |
+| tokens_used | INT | | Prompt + completion tokens; used for AI cost tracking |
+| started_at | TIMESTAMPTZ | | |
+| completed_at | TIMESTAMPTZ | | |
+
+Retained for 90 days (aligned with default run retention). Up to 4 rows per run when all pipeline stages complete.
+
+---
+
+### 4.9 ai_anomalies *(Phase 2 — A4)*
+
+Anomalies detected by Feature A4 (Trend Anomaly Detection). Schema deployed in all installations; rows written only when anomaly detection activates (requires 7+ prior runs per project for a baseline).
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| id | BIGINT | PK, AUTO_INCREMENT | |
+| test_run_id | BIGINT | NOT NULL, FK → test_runs.id | Indexed |
+| anomaly_type | VARCHAR(50) | NOT NULL | `pass_rate_drop` \| `duration_spike` \| `new_failure` \| `flaky_increase` \| `category_shift` |
+| severity | ENUM | NOT NULL | `info` \| `warning` \| `critical` |
+| description | TEXT | NOT NULL | Plain English explanation surfaced in the UI |
+| data | JSONB | | Supporting data: delta values, affected test IDs, baseline comparison |
+| acknowledged | BOOLEAN | NOT NULL, DEFAULT FALSE | Set when a user dismisses the anomaly |
+| acknowledged_by | BIGINT | FK → users.id | NULL until acknowledged |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
 
 ---
 
