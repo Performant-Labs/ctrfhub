@@ -259,6 +259,65 @@ await startWorker();
 
 For HA multi-instance deployments (multiple `api` replicas), run migrations as a dedicated one-shot init container before starting the app containers.
 
+### Graceful shutdown
+
+The `api` process must handle `SIGTERM` gracefully. Docker sends `SIGTERM` when `docker compose down` or a rolling deploy is triggered. The process has `SIGTERM_TIMEOUT` seconds (default 30s) before Docker sends `SIGKILL`.
+
+**Shutdown sequence:**
+
+```
+SIGTERM received
+  │
+  ├─ 1. Stop accepting new connections (Fastify closes its listening socket)
+  │       → In-flight requests continue; new requests get TCP RST
+  │
+  ├─ 2. Wait for in-flight ingest requests to complete
+  │       → A chunked bulk insert (setImmediate chain) may take several seconds
+  │         for large CTRF payloads; let it finish to avoid a partial run in DB
+  │       → Timeout: 25s (leaves 5s buffer before SIGKILL)
+  │
+  ├─ 3. Cancel pending AI pipeline EventBus events
+  │       → Any run.ingested events not yet picked up by AiCategorizerService
+  │         are abandoned; startup recovery query re-queues them on next boot
+  │       → Do NOT wait for AI API calls in progress — they are idempotent
+  │
+  ├─ 4. Drain SSE connections
+  │       → Send a final `event: shutdown\ndata: {}\n\n` frame so clients know
+  │         to reconnect; HTMX SSE extension handles reconnect automatically
+  │
+  └─ 5. Close DB connection pool and exit(0)
+```
+
+**Implementation sketch:**
+
+```typescript
+// src/server.ts
+const server = await buildApp();
+await server.listen({ port: PORT, host: '0.0.0.0' });
+
+const shutdown = async (signal: string) => {
+  server.log.info({ signal }, 'shutdown initiated');
+  await server.close();   // stops new connections; waits for in-flight requests
+  await orm.close();      // closes DB connection pool
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
+```
+
+Fastify's `server.close()` internally calls `closeAllConnections()` and waits for pending requests. The default wait is controlled by Fastify's `closeGracefully` option — set to `true`.
+
+**Docker Compose setting:**
+
+```yaml
+services:
+  api:
+    stop_grace_period: 30s   # matches SIGTERM_TIMEOUT; default is 10s — too short
+```
+
+The `worker` container follows the same pattern but waits for the current retention batch to complete before closing. A retention sweep that is mid-batch will finish its current 1,000-row chunk, then stop.
+
 ---
 
 ## Security

@@ -81,4 +81,63 @@ Milestone protection is a **Business Edition** feature (milestones are Business 
 
 ---
 
+## Artifact storage sizing
+
+The numbers above cover only the database (`test_results`, `test_runs` rows). Uploaded artifacts (screenshots, videos, traces, logs) live separately on the `artifacts_data` volume or in S3. This section covers their growth.
+
+### Per-artifact-type size estimates
+
+| Artifact type | Typical size | Notes |
+|---|---|---|
+| Screenshot (PNG/WebP) | 100 KB – 2 MB | Average ~500 KB for a full-page Playwright screenshot |
+| Short video clip (WebM) | 2 MB – 50 MB | Average ~10 MB for a 30s Playwright recording |
+| Trace file (zip) | 200 KB – 20 MB | Average ~3 MB; contains network + DOM snapshots |
+| Log file (text) | 10 KB – 500 KB | Average ~100 KB for a CI console log |
+| HTML report | 50 KB – 5 MB | Average ~500 KB for a Playwright HTML report |
+
+**Long-form videos (> 100 MB) should not be uploaded.** Embed them as external URL references (Loom, YouTube, Vimeo) in the CTRF `attachments` field. CTRFHub stores the URL only; no file is uploaded.
+
+### Projected artifact volume by scenario
+
+Assumptions: screenshots on failure only (Playwright default), no video upload, 5% failure rate.
+
+| Scenario | Failures/day | Screenshots/failure | Artifact growth/day | Artifact growth/month |
+|---|---|---|---|---|
+| **Small team** (20 runs × 5K tests) | 5K | 30% have screenshot | ~750 MB | ~22 GB |
+| **Active team** (100 runs × 20K tests) | 100K | 20% have screenshot | ~10 GB | ~300 GB |
+| **Playwright video on** (active team) | 100K | 10% have 10MB video | +100 GB | +3 TB |
+| **Trace files on** (active team) | 100K | 10% have 3MB trace | +30 GB | +900 GB |
+
+**Key insight:** Video recording and trace capture are the dominant cost. Enable them selectively (e.g. only on retry or only on `--project=chrome-stable`). External video links (Loom) are effectively free.
+
+### Steady-state with retention
+
+Artifact files are deleted by the nightly retention sweep alongside their DB rows (storage-delete-before-DB-delete rule; see DD-014). With retention active:
+
+```
+steady-state artifact storage ≈ artifact_growth_per_day × retention_days
+```
+
+| Scenario | Retention | Steady-state artifacts |
+|---|---|---|
+| Small team (screenshots only) | 90 days | ~2 GB |
+| Active team (screenshots only) | 90 days | ~900 GB |
+| Active team (video on) | 30 days | ~3 TB |
+
+### Recommended local volume sizing
+
+When `ARTIFACT_STORAGE=local`, size `artifacts_data` as:
+
+```
+volume_size = steady_state_artifacts × 1.3   ← 30% headroom
+```
+
+For active teams with video enabled, S3 is strongly recommended over local storage — video growth rapidly exceeds reasonable VPS disk sizes.
+
+### SQLite self-hosters
+
+Solo developers using `compose.sqlite.yml` are unlikely to upload large artifacts. A 20 GB VPS disk is comfortable for years with screenshot-only artifacts and 90-day retention.
+
+---
+
 *Last updated: 2026-04-22*
