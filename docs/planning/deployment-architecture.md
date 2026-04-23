@@ -50,6 +50,8 @@ CTRFHub runs as a multi-container Docker Compose application. Responsibilities a
 - REST API (`/api/v1/...`)
 - SSE endpoint (`/api/sse/...`)
 - CTRF ingest endpoint (`POST /api/v1/projects/:slug/runs`)
+- `GET /api/files/*` — local artifact serving; rate-limited to 300 req/min per session user (only active when `ARTIFACT_STORAGE=local`)
+- `GET /health` — unauthenticated health check for Docker, load balancers, and Kubernetes probes
 - Does **not** run cron jobs or background processing
 - Stateless — can be scaled horizontally behind the proxy (with Redis EventBus for SSE)
 
@@ -130,6 +132,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:$$PORT/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s  # allow time for migrations to complete on first boot
 
   worker:
     build: .
@@ -150,8 +158,7 @@ services:
       db:
         condition: service_healthy
       api:
-        condition: service_started  # ensures migrations have run before worker boots
-        # TODO(issue #10): upgrade to service_healthy once GET /health is implemented
+        condition: service_healthy  # guarantees migrations have run before worker boots
 
   db:
     image: postgres:16-alpine

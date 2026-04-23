@@ -24,7 +24,8 @@
 | **Database (dev/single-node)** | SQLite via `better-sqlite3` |
 | **File uploads** | `@fastify/multipart` |
 | **Static assets** | `@fastify/static` |
-| **Rate limiting** | `@fastify/rate-limit` (keyed on `x-api-token` value for ingest routes; per-IP for UI routes) |
+| **Rate limiting** | `@fastify/rate-limit` (keyed on `x-api-token` value for ingest routes; per-IP for UI routes; 300 req/min per user for artifact serving) |
+| **Security headers** | `@fastify/helmet` — CSP, HSTS, X-Content-Type-Options, X-Frame-Options |
 | **Artifact storage** | Local filesystem (default); S3/MinIO-compatible (optional, via env) |
 
 ---
@@ -257,6 +258,65 @@ await startWorker();
 **Why this matters:** Both `api` and `worker` start from the same image. If both called `migrator.up()` simultaneously, they would race to acquire MikroORM's advisory lock on the `mikro_orm_migrations` table. The race itself is safe (PostgreSQL advisory lock prevents double-execution), but the losing container will block at startup and may time out before the lock is released on very large migration sets.
 
 For HA multi-instance deployments (multiple `api` replicas), run migrations as a dedicated one-shot init container before starting the app containers.
+
+---
+
+## Security
+
+### CSRF protection
+
+HTMX makes all requests via XHR/fetch — not HTML form navigation. Browsers enforce `SameSite=Lax` on XHR/fetch: **the session cookie is not sent on cross-origin requests**. A malicious page on `evil.com` that attempts to POST to a CTRFHub instance cannot attach the session cookie; the attack fails at the browser before reaching the server.
+
+**No explicit CSRF token is required.** Better Auth issues `SameSite=Lax` cookies by default. This setting must not be changed to `SameSite=None`.
+
+---
+
+### Content Security Policy (CSP)
+
+Set via `@fastify/helmet`. The MVP policy is permissive but meaningful — it constrains frame sources and connection targets while allowing `unsafe-inline` for Alpine.js.
+
+**Why `unsafe-inline` is required:** Alpine.js evaluates `x-data` and `x-on:*` attribute values as JavaScript expressions at runtime. A nonce-based strict CSP that eliminates `unsafe-inline` is achievable but requires per-request nonce injection; this is deferred to post-MVP.
+
+```
+default-src  'self';
+script-src   'self' 'unsafe-inline';
+style-src    'self' 'unsafe-inline';
+frame-src    'self'
+             trace.playwright.dev
+             loom.com www.loom.com
+             youtube.com www.youtube.com youtube-nocookie.com
+             vimeo.com player.vimeo.com;
+img-src      'self' data:;
+media-src    'self';
+connect-src  'self';
+```
+
+Playwright HTML report iframes are served from the same origin (`/runs/:id/report/`) and rendered with `sandbox="allow-scripts allow-same-origin"` to prevent report content from accessing the parent frame's DOM or cookies.
+
+---
+
+### Artifact file serving — rate limit
+
+`GET /api/files/*` is rate-limited to **300 req/min per authenticated session user** via `@fastify/rate-limit`. This applies only when `ARTIFACT_STORAGE=local`. S3/MinIO pre-signed URLs are single-use with a 1-hour expiry and cannot be replayed; no rate limit is required for them.
+
+---
+
+### Health endpoint
+
+`GET /health` — unauthenticated. Returns:
+
+```json
+{ "status": "ok", "db": "ok", "version": "1.0.0", "uptime": 3600 }
+```
+
+Checks performed:
+- **DB:** `SELECT 1` — catches pool exhaustion and connectivity failures
+- **Redis:** ping, only when `EVENT_BUS=redis`
+- **Artifact storage:** not checked (adds latency; disk/S3 failures surface via ingest errors instead)
+
+Returns `503 { "status": "error", "db": "error" }` if the DB is unreachable.
+
+Used by: Docker compose `healthcheck` on the `api` container; upstream load balancers; Kubernetes liveness/readiness probes.
 
 ---
 
