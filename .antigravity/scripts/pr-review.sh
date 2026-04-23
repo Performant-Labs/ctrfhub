@@ -44,6 +44,14 @@ for cmd in claude gh; do
   fi
 done
 
+# In non-interactive runner contexts (LaunchAgent), macOS Keychain OAuth tokens
+# are not accessible. ANTHROPIC_API_KEY must be set in the runner environment.
+# Set it in ~/Projects/actions-runner/.env or export it in the LaunchAgent plist.
+if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+  echo "Warning: ANTHROPIC_API_KEY not set. claude may fail in non-interactive" >&2
+  echo "         runner contexts. Set it in ~/Projects/actions-runner/.env" >&2
+fi
+
 echo "→ Fetching PR #${PR_NUMBER} metadata..." >&2
 PR_META=$(gh pr view "$PR_NUMBER" --json title,body,author,headRefName,baseRefName \
   --template '## PR: {{.title}}
@@ -116,8 +124,13 @@ ${PR_DIFF}
 ENDOFPROMPT
 
 echo "→ Running Spec-enforcer review via claude -p..." >&2
-REVIEW=$(claude -p < "$PROMPT_FILE") || {
-  echo "Error: claude -p exited with code $?. Check: claude auth status" >&2
+# --dangerously-skip-permissions: required in non-interactive CI context so claude
+# can read skills/, docs/, etc. without prompting for approval.
+# Prompt passed as argument (more reliable than stdin in runner environments).
+PROMPT_CONTENT=$(cat "$PROMPT_FILE")
+REVIEW=$(claude -p --dangerously-skip-permissions "$PROMPT_CONTENT") || {
+  echo "Error: claude -p exited with code $?" >&2
+  echo "Check: ANTHROPIC_API_KEY set? claude auth status?" >&2
   exit 1
 }
 

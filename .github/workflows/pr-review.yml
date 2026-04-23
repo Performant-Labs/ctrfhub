@@ -39,53 +39,25 @@ jobs:
           # LiteLLM recognizes `openrouter/<vendor>/<model>` prefix and uses OPENROUTER_API_KEY directly.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # .pr_agent.toml at repo root supplies model, extra_instructions, etc.
-          # Per-run override would go here, e.g.:
-          # CONFIG.MODEL: "openrouter/moonshotai/kimi-k2-thinking"
 
       - name: PR-Agent review — high-stakes (Opus 4.6)
-        # Triggered when the `high-stakes` label is present. Opus 4.6 is ~20× more expensive but
-        # preferred for auth / migrations / security / public API contract changes.
+        # Triggered when the `high-stakes` label is present.
         if: ${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
         uses: qodo-ai/pr-agent@main
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONFIG.MODEL: "openrouter/anthropic/claude-opus-4-6"
-          # Keep Kimi as the fallback here to avoid thrashing if Anthropic rate-limits during a spike
           CONFIG.FALLBACK_MODELS: '["openrouter/moonshotai/kimi-k2-thinking"]'
 
-  argos-local-review:
-    # Runs .antigravity/scripts/pr-review.sh on the self-hosted Tailscale runner.
-    # The runner has `claude` CLI and `gh` CLI already authenticated — no API keys
-    # in GitHub secrets required. All machines are on the same Tailscale network.
-    #
-    # Self-hosted runner setup (one-time):
-    #   1. GitHub → Settings → Actions → Runners → New self-hosted runner
-    #   2. Tag it: [self-hosted, tailscale, claude]
-    #   3. `claude auth login` on the runner machine
-    #   4. `gh auth login` on the runner machine
-    if: |
-      github.event.sender.type != 'Bot' &&
-      (!github.event.pull_request.draft || github.event.issue.pull_request) &&
-      github.event_name == 'pull_request'
-    runs-on: [self-hosted, tailscale, claude]
-    timeout-minutes: 10
-    concurrency:
-      group: argos-local-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Argos Spec-enforcer review (claude -p, local tokens)
-        run: |
-          .antigravity/scripts/pr-review.sh ${{ github.event.pull_request.number }} --post
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # ANTHROPIC_API_KEY not needed — claude uses the authenticated session
-          # on the runner machine. If you switch to key-based auth, set it in the
-          # runner environment (not in GitHub secrets).
-
+# Argos local review (claude -p) is intentionally NOT automated in CI.
+#
+# Reason: the GitHub Actions LaunchAgent can't access macOS Keychain, so OAuth
+# tokens don't work. The only alternative is ANTHROPIC_API_KEY, which would
+# charge inference costs on every PR push.
+#
+# Run manually from a terminal (where OAuth works, no API key needed):
+#
+#   cd /Users/andreangelantoni/Projects/ctrfhub
+#   .antigravity/scripts/pr-review.sh <PR-number>          # stdout only
+#   .antigravity/scripts/pr-review.sh <PR-number> --post  # post to PR
