@@ -1,0 +1,71 @@
+name: PR-Agent Spec Review
+
+on:
+  pull_request:
+    # synchronize (new commits) is intentionally omitted — PR-Agent's action runner
+    # skips it internally. Reviews fire on open/reopen. For subsequent commits,
+    # comment `/review` on the PR to trigger an on-demand review.
+    types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]   # enables /review, /describe, /improve slash commands
+
+# Minimum scopes the action needs: read code, write PR comments & reviews.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: pr-agent-${{ github.event.pull_request.number || github.event.issue.number }}
+  # Cancel in-flight reviews when a newer commit lands — no point reviewing stale code.
+  cancel-in-progress: true
+
+env:
+  # Opt into Node.js 24 now — Node 20 actions deprecated, forced June 2026.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+
+jobs:
+  pr-agent:
+    # Skip bot-authored events, and skip drafts unless someone triggered a slash command.
+    if: |
+      github.event.sender.type != 'Bot' &&
+      (!github.event.pull_request.draft || github.event.issue.pull_request)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: PR-Agent review (default model — Kimi K2.6 Thinking via OpenRouter)
+        # If the PR is labelled `high-stakes`, skip this step — the high-stakes step below handles it with Opus 4.6.
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
+        uses: qodo-ai/pr-agent@main
+        env:
+          # LiteLLM recognizes `openrouter/<vendor>/<model>` prefix and uses OPENROUTER_API_KEY directly.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: PR-Agent review — high-stakes (Opus 4.6)
+        # Triggered when the `high-stakes` label is present.
+        if: ${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
+        uses: qodo-ai/pr-agent@main
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONFIG.MODEL: "openrouter/anthropic/claude-opus-4-6"
+          CONFIG.FALLBACK_MODELS: '["openrouter/moonshotai/kimi-k2-thinking"]'
+
+# Argos local review (claude -p) is intentionally NOT automated in CI.
+#
+# Reason: the GitHub Actions LaunchAgent can't access macOS Keychain, so OAuth
+# tokens don't work. The only alternative is ANTHROPIC_API_KEY, which would
+# charge inference costs on every PR push.
+#
+# Run manually from a terminal (where OAuth works, no API key needed):
+#
+#   cd /Users/andreangelantoni/Projects/ctrfhub
+#   .antigravity/scripts/pr-review.sh <PR-number>          # stdout only
+#   .antigravity/scripts/pr-review.sh <PR-number> --post  # post to PR
