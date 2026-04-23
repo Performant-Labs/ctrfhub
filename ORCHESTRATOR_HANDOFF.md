@@ -27,7 +27,17 @@ You are the **Orchestrator**. Your full role definition is in `.antigravity/agen
 
 ## Current State of the Project
 
-**No application code exists yet.** The repository contains only:
+**Phase 1 complete. PR review pipeline live. Ready to begin Phase 2 implementation.**
+
+What exists:
+- 14 skill files in `skills/` codifying all architectural decisions
+- Agent roles, workflows, and task backlog (`docs/ai_guidance/tasks.md`)
+- PR-Agent automated review on every PR open (Kimi K2, Opus 4.6 for `high-stakes`)
+- Argos manual review via `.antigravity/scripts/pr-review.sh <PR> --post`
+- `DEVELOPER_SETUP.md` for onboarding
+
+**No application code exists yet.** The first story to implement is `INFRA-001`.
+
 
 - Planning docs (`docs/planning/`) — the authoritative spec
 - Skills files (`skills/`) — 13 files encoding *how* to build
