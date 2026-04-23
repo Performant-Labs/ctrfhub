@@ -225,6 +225,59 @@ For development, `db` exposes port `5432` to the host via an override in `docker
 
 ---
 
+## SQLite deployment (single-user / solo dev)
+
+For Persona 3 (the solo developer on a cheap VPS), CTRFHub can run without PostgreSQL. The database is a SQLite file on a named Docker volume.
+
+### Container topology
+
+```
+┌─────────────────────────────────────────┐
+│               compose.sqlite.yml         │
+│                                          │
+│  proxy (Caddy)                           │
+│  └── TLS + reverse proxy to api:3000    │
+│                                          │
+│  api (Fastify + SQLite)                  │
+│  ├── Serves UI + REST API               │
+│  ├── CTRF ingest                        │
+│  ├── Nightly retention cron (in-process) │
+│  └── sqlite_data volume (the DB file)   │
+└─────────────────────────────────────────┘
+```
+
+No `db` container. No `worker` container. No `redis`.
+
+```bash
+docker compose -f compose.sqlite.yml up -d
+```
+
+### Why no separate worker container for SQLite
+
+SQLite supports only one concurrent writer. If the `worker` container (retention sweep) and the `api` container (CTRF ingest) both attempt to write simultaneously, SQLite serialises them via a file lock — a long retention sweep can block ingest for seconds. WAL mode reduces this but does not eliminate write contention.
+
+**For SQLite deployments the nightly retention cron runs inside the `api` process** using `node-cron`. Because there is only one process writing to the database, there is no contention. The cron is registered as a Fastify lifecycle hook during startup and respects the same `RETENTION_CRON_SCHEDULE` env var.
+
+The separate `worker` container is a **PostgreSQL-only concern**. PostgreSQL handles concurrent writers correctly and benefits from process isolation (slow retention sweep never delays API responses).
+
+### SQLite volumes
+
+| Volume | Contents |
+|---|---|
+| `sqlite_data` | SQLite database file (`ctrfhub.db`) |
+| `artifacts_data` | Uploaded artifacts (when `ARTIFACT_STORAGE=local`) |
+| `caddy_data` | TLS certificates |
+| `caddy_config` | Caddy config state |
+
+### SQLite limitations
+
+- Single-user or very small teams only (< 5 concurrent users)
+- Not suitable for teams running more than ~50 CI runs/day (use PostgreSQL instead)
+- No horizontal scaling — SQLite is single-file, single-process
+- Migrations still run automatically at `api` startup (same as PostgreSQL)
+
+---
+
 ## Horizontal scaling (post-MVP)
 
 To run multiple `api` instances:

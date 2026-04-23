@@ -178,11 +178,13 @@ Without a retention policy, `test_results` grows unboundedly. At normal CI veloc
 
 4. **Audit log entry** *(Business Edition)*: record how many runs were deleted on each retention sweep.
 
-### Decision needed
+### Decision (resolved)
 
-Should the cron run inside the Fastify process (using `node-cron`) or as a separate process/container in Docker Compose?
+**PostgreSQL deployments:** Cron runs in the separate `worker` container (`node dist/worker.js`). Process isolation means a slow retention sweep never delays API response times. See `deployment-architecture.md` for the full topology.
 
-**Decision: separate `worker` container** (confirmed — see `deployment-architecture.md`). The worker shares the same Docker image as `api` but uses entrypoint `node dist/worker.js`. This keeps the API server focused on request handling and prevents a slow retention sweep from affecting API response times. The single-worker constraint (do not run multiple worker instances simultaneously without a distributed lock) is documented in `deployment-architecture.md`.
+**SQLite deployments:** Cron runs inside the `api` process using `node-cron`, registered as a Fastify lifecycle hook. SQLite only supports one concurrent writer; a separate `worker` container would cause write contention. See `deployment-architecture.md` § "SQLite deployment" for details.
+
+Both paths respect the `RETENTION_CRON_SCHEDULE` env var (default: `0 2 * * *`, runs at 2am).
 
 ---
 
