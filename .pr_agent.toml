@@ -8,13 +8,18 @@
 # Override per-PR: add the `high-stakes` label to force Opus 4.6 primary (see .github/workflows/pr-review.yml).
 
 [config]
-# VERIFY current K2.6 Thinking model ID on OpenRouter — moonshotai IDs update with each version
+# Model IDs verified against https://openrouter.ai/api/v1/models 2026-04-23
+# Kimi K2 Thinking: moonshotai/kimi-k2-thinking ✓
+# Opus 4.6 uses a DOT not a hyphen: claude-opus-4.6 ✓
 model = "openrouter/moonshotai/kimi-k2-thinking"
-fallback_models = ["openrouter/anthropic/claude-opus-4-6"]
+fallback_models = ["openrouter/anthropic/claude-opus-4.6"]
 verbosity_level = 1
 # Don't truncate our skills/ context — reviews need the full spec context loaded
 max_description_tokens = 1500
 max_commits_tokens = 1500
+# Both models are newer than PR-Agent's internal MAX_TOKENS table — set explicitly.
+# kimi-k2-thinking: 131072 context; claude-opus-4.6: 200k. Use conservative 131072.
+custom_model_max_tokens = 131072
 
 [pr_reviewer]
 require_score_review = true
@@ -86,3 +91,5 @@ publish_output_progress = false
 [litellm]
 # Let LiteLLM retry on transient failures before falling back
 drop_params = true
+# Needed for models not in LiteLLM's built-in token count table
+max_model_len = 131072
