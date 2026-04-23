@@ -2,9 +2,12 @@ name: PR-Agent Spec Review
 
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review, synchronize]
+    # synchronize (new commits) is intentionally omitted — PR-Agent's action runner
+    # skips it internally. Reviews fire on open/reopen. For subsequent commits,
+    # comment `/review` on the PR to trigger an on-demand review.
+    types: [opened, reopened, ready_for_review]
   issue_comment:
-    types: [created]
+    types: [created]   # enables /review, /describe, /improve slash commands
 
 # Minimum scopes the action needs: read code, write PR comments & reviews.
 permissions:
