@@ -55,10 +55,13 @@ fi
 ### Checking on the runner
 
 ```bash
-tmux ls                      # confirm 'gh-runner' session is present
-tmux attach -t gh-runner     # view live output
-# Ctrl-B D to detach without killing it
+tmux ls                   # confirm 'gh-runner' session is present
+tmux attach -t gh-runner  # view live output
 ```
+
+When you're done watching, **press `Ctrl-B D` to detach** — this leaves the session running in the background. Then you can safely close the terminal window.
+
+> **Do not just close the terminal while attached** — detach first with `Ctrl-B D`, then close. Force-closing usually works but isn't guaranteed.
 
 ### Stopping the runner
 
