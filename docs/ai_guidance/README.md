@@ -109,6 +109,7 @@ Both commands check for a clean working tree before proceeding and optionally su
 | [`agent/agents.md`](agent/agents.md) | Agent behavior guidelines |
 | [`agent/claude-bridge.md`](agent/claude-bridge.md) | File-drop protocol for running host-only commands (ddev, drush, curl, Chrome) from a sandboxed agent |
 | [`agent/naming.md`](agent/naming.md) | Naming conventions (kebab-case, file taxonomy) |
+| [`agent/pr-agent-setup.md`](agent/pr-agent-setup.md) | Guide to setting up Qodo PR-Agent as a Spec-enforcer |
 | [`agent/technical-writing.md`](agent/technical-writing.md) | Documentation style guide |
 | [`frameworks/drupal/best-practices.md`](frameworks/drupal/best-practices.md) | Drupal development best practices |
 | [`frameworks/fastify/conventions.md`](frameworks/fastify/conventions.md) | Fastify + TypeScript + Zod conventions (CTRFHub) |

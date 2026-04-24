@@ -31,8 +31,7 @@ if [ -z "$PROJECT_ROOT" ]; then
 fi
 
 TARGET_DIR="$PROJECT_ROOT/docs/ai_guidance"
-# Internal paths updated to new location
-PROTOCOL_FILE="$TARGET_DIR/admin_tools/guidance-alignment-protocol.md"
+PROTOCOL_FILE="$PROJECT_ROOT/docs/ai_guidance/admin_tools/guidance-alignment-protocol.md"
 
 if ! command -v gemini &> /dev/null; then
     echo -e "${RED}🚨 Error: 'gemini' CLI is not installed.${NC}"
@@ -53,8 +52,7 @@ fi
 echo -e "${CYAN}🔍 Running AI Guidance Alignment Analysis...${NC}"
 
 # Run deterministic comparison
-# EXCLUSION ADDED: ignore admin_tools/ folder so the tool doesn't sync itself
-DIFF_OUTPUT=$(diff -rq "$TARGET_DIR" "$SOURCE_DIR" --exclude='.git' --exclude='admin_tools' 2>&1)
+DIFF_OUTPUT=$(diff -rq "$TARGET_DIR" "$SOURCE_DIR" --exclude='.git' 2>&1)
 
 if [ -z "$DIFF_OUTPUT" ]; then
     echo -e "${GREEN}✅ Everything is in sync.${NC}"
@@ -94,6 +92,7 @@ while read -r line; do
     DISPLAY_PATH="docs/ai_guidance/$REL_PATH_IN_TARGET"
     ITEM="$i. $DISPLAY_PATH — [Suggestion: $ACTION]"
     echo -e "  $i. $DISPLAY_PATH — [Suggestion: ${COLOR}${ACTION}${NC}]"
+    # Use proper bash newline
     REPORT="${REPORT}${ITEM}"$'\n'
     ((i++))
 done <<< "$DIFF_OUTPUT"
