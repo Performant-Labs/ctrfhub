@@ -14,7 +14,7 @@ Stack: Node.js 22 LTS · Fastify · TypeScript (strict) · Zod · MikroORM v7 (P
 |---|---|---|
 | **Daed** (Daedalus) | Claude Opus 4.6 | Built Phase 1 infrastructure — skills, roles, workflows, task backlog |
 | **Argos** | Claude Opus 4.7 | Orchestrator — assigns tasks, gates stories, runs audits |
-| **Hermes** | — | Andrea's personal manager agent (separate project) |
+| **Hermes** | — | André's personal manager agent (separate project) |
 
 ## Authoritative context — read in this order
 

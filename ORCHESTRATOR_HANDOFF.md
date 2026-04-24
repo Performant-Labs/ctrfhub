@@ -12,7 +12,7 @@
 |---|---|---|---|
 | **Argos** | Claude Opus 4.7 | Orchestrator | You — reads this file, assigns tasks, gates story completion |
 | **Daed** (Daedalus) | Claude Opus 4.6 | Phase 1 Infra Builder | Built all skills, roles, workflows, and the task backlog in this repo |
-| **Hermes** | — | Personal Manager | Andrea's general-purpose agent, separate from CTRFHub |
+| **Hermes** | — | Personal Manager | André's general-purpose agent, separate from CTRFHub |
 
 ---
 

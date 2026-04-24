@@ -1,21 +1,21 @@
 # CTRFHub — Project Architecture
 
-> How the multi-session, human-in-the-loop agent workflow is designed to work. This is the shared reference between Andrea and any agent working on CTRFHub. Every architectural piece is listed in the checklist at the bottom; as each is completed it moves from ⬜ to ✅.
+> How the multi-session, human-in-the-loop agent workflow is designed to work. This is the shared reference between André and any agent working on CTRFHub. Every architectural piece is listed in the checklist at the bottom; as each is completed it moves from ⬜ to ✅.
 
 ---
 
 ## 1. Intent
 
-CTRFHub is built by a team of **specialized Claude agents** coordinated across **separate sessions** by a human operator (Andrea). There is no autonomous agent-to-agent dispatch. Andrea verifies every handoff and every PR. Each session:
+CTRFHub is built by a team of **specialized Claude agents** coordinated across **separate sessions** by a human operator (André). There is no autonomous agent-to-agent dispatch. André verifies every handoff and every PR. Each session:
 
 1. Loads its role file
-2. Reads the inputs Andrea provides (brief, handoff note, etc.)
+2. Reads the inputs André provides (brief, handoff note, etc.)
 3. Produces its outputs (code, tests, audit report, etc.)
 4. Ends
 
 The next session starts fresh with its own inputs. The filesystem is the memory.
 
-The trade-off is real: manual relay is slower than autonomous dispatch, but every step is inspected by a human who can stop a drift before it propagates. Andrea is the gate.
+The trade-off is real: manual relay is slower than autonomous dispatch, but every step is inspected by a human who can stop a drift before it propagates. André is the gate.
 
 ---
 
@@ -23,20 +23,20 @@ The trade-off is real: manual relay is slower than autonomous dispatch, but ever
 
 | Name (Codename) | Role | Model | Reads (per session) | Writes |
 |---|---|---|---|---|
-| **Andrea** | Human operator, PR reviewer, gap arbiter | — | Everything | Merges, gap decisions, escalation responses |
+| **André** | Human operator, PR reviewer, gap arbiter | — | Everything | Merges, gap decisions, escalation responses |
 | **Argos** | Orchestrator — assigns, gates, never codes | Opus 4.7 | `ORCHESTRATOR_HANDOFF.md`, `docs/planning/tasks.md`, `docs/planning/gaps.md`, relevant planning sections | Task Briefs, `tasks.md` status transitions, session notes |
 | **Feature-implementer** | Writes application code | Opus 4.7 | Task Brief, required skills, planning docs named in brief | Code in `src/`, migrations, commits on story branch, feature-handoff note |
 | **Test-writer** | Runs T1/T2/T3, writes tests | Opus 4.7 | Feature handoff, `test-writer.md`, `page-verification-hierarchy.md`, `vitest-three-layer-testing.md` | Test files in `src/__tests__/` and `e2e/`, commits on story branch, tier reports, test-handoff note |
 | **Spec-enforcer** | Read-only audit | Opus 4.7 (Opus 4.6 on `high-stakes` label) | Diff vs `main`, all `skills/`, `docs/planning/*` | PASS/BLOCK audit report only |
 | **PR-Agent (cloud)** | Automated PR review | Kimi K2.6 default / Opus 4.6 on `high-stakes` | Diff, `CLAUDE.md`, `skills/`, `docs/planning/tasks.md` | PR comments, inline review |
-| **Human reviewer** | Final merge gate | — (Andrea again) | PR diff, PR-Agent findings, handoff notes | Merge / bounce |
+| **Human reviewer** | Final merge gate | — (André again) | PR diff, PR-Agent findings, handoff notes | Merge / bounce |
 
 ---
 
 ## 3. Session flow for a single story
 
 ```
- Andrea      Argos         Feature-impl     Test-writer      Spec-enforcer      PR-Agent      Andrea (reviewer)
+ André      Argos         Feature-impl     Test-writer      Spec-enforcer      PR-Agent      André (reviewer)
    │           │                │                │                  │               │                │
    │ assign ─►│ reads tasks,    │                │                  │               │                │
    │          │ writes Brief,   │                │                  │               │                │
@@ -73,28 +73,28 @@ The trade-off is real: manual relay is slower than autonomous dispatch, but ever
    │ (merge lands [x] flip on main along with the story)                                              │
 ```
 
-Key property: every arrow that crosses a role boundary is a **new session** opened by Andrea, who has decided the previous step is complete.
+Key property: every arrow that crosses a role boundary is a **new session** opened by André, who has decided the previous step is complete.
 
 ---
 
 ## 4. Session playbook
 
-Each subsection describes one session type. Entry = what Andrea pastes. Reads = what the agent needs to pull in on top of auto-loaded CLAUDE.md. Produces = the artifacts the agent creates. Exit = the short status message the agent ends with.
+Each subsection describes one session type. Entry = what André pastes. Reads = what the agent needs to pull in on top of auto-loaded CLAUDE.md. Produces = the artifacts the agent creates. Exit = the short status message the agent ends with.
 
 ### 4.1 Argos — story assignment
 
-- **Entry.** Andrea opens a session in the ctrfhub repo. Claude Code auto-loads `CLAUDE.md`, which directs Argos to read `ORCHESTRATOR_HANDOFF.md`. Andrea says "Assign `<taskId>`" (e.g. "Assign INFRA-001").
+- **Entry.** André opens a session in the ctrfhub repo. Claude Code auto-loads `CLAUDE.md`, which directs Argos to read `ORCHESTRATOR_HANDOFF.md`. André says "Assign `<taskId>`" (e.g. "Assign INFRA-001").
 - **Reads.** `ORCHESTRATOR_HANDOFF.md`, the `<taskId>` section of `docs/planning/tasks.md`, `docs/planning/gaps.md` (for P0 check), the planning doc sections named in the acceptance criteria.
 - **Produces.**
   - A branch `story/<taskId>` cut from current `main`.
   - A Task Brief at `.argos/<taskId>/brief.md` (gitignored — does not commit).
   - A commit on `story/<taskId>` that flips `<taskId>` from `[ ]` to `[/]` in `tasks.md`, message: `chore(<taskId>): assign`.
-  - A short summary message back to Andrea: "Branch `story/<taskId>` cut, status flipped to `[/]`. Brief at `.argos/<taskId>/brief.md`. Open a new session, paste `feature-implementer.md` as the first message, then the Brief."
+  - A short summary message back to André: "Branch `story/<taskId>` cut, status flipped to `[/]`. Brief at `.argos/<taskId>/brief.md`. Open a new session, paste `feature-implementer.md` as the first message, then the Brief."
 - **Exit.** Above message.
 
 ### 4.2 Feature-implementer — implementation
 
-- **Entry.** New session. First message: full contents of `.antigravity/agents/feature-implementer.md`. Second message: contents of `.argos/<taskId>/brief.md`. Andrea has already checked out `story/<taskId>` (Argos cut it at 4.1).
+- **Entry.** New session. First message: full contents of `.antigravity/agents/feature-implementer.md`. Second message: contents of `.argos/<taskId>/brief.md`. André has already checked out `story/<taskId>` (Argos cut it at 4.1).
 - **Reads.** All `skills/` listed in the Brief; all `docs/planning/` sections listed in the Brief.
 - **Produces.**
   - One or more commits on `story/<taskId>`, messages `feat(<taskId>): …` / `refactor(<taskId>): …` / `fix(<taskId>): …`.
@@ -120,17 +120,17 @@ Each subsection describes one session type. Entry = what Andrea pastes. Reads = 
 - **Produces.** `.argos/<taskId>/spec-audit.md` — PASS or BLOCK with findings. **No other writes.**
 - **Exit.** "Verdict: PASS" or "Verdict: BLOCK — see `.argos/<taskId>/spec-audit.md`."
 
-### 4.5 Andrea opens the PR
+### 4.5 André opens the PR
 
 - `gh pr create --base main --head story/<taskId> --title "[<taskId>] <summary>" --body-file .argos/<taskId>/pr-body.md`
-- PR template prefills the body; Andrea fills in from the handoff notes.
+- PR template prefills the body; André fills in from the handoff notes.
 
 ### 4.6 PR-Agent cloud review
 
 - Fires on PR open via `.github/workflows/pr-review.yml`.
 - Default model Kimi K2.6. Apply `high-stakes` label to route to Opus 4.6 for auth / migration / security diffs.
 
-### 4.7 Andrea reviews and merges
+### 4.7 André reviews and merges
 
 - Reads PR diff + PR-Agent comments + `.argos/<taskId>/` handoffs.
 - Outcomes:
@@ -145,7 +145,7 @@ Because the status flip ships with the PR, Argos runs **between Spec-enforcer PA
 - New Argos session. Checks out `story/<taskId>` locally.
 - Reads `.argos/<taskId>/spec-audit.md` — verifies PASS.
 - Commits `[/]` → `[x]` in `tasks.md` on the story branch, message `chore(<taskId>): complete`. This is the last commit on the branch before the PR opens.
-- Names the next assignable stories in the summary message back to Andrea.
+- Names the next assignable stories in the summary message back to André.
 
 After PR merges to `main`, the `[x]` flip lands along with the story. No post-merge Argos pass is needed.
 
@@ -164,7 +164,7 @@ ctrfhub/
 │       ├── tier-3-report.md        (UI stories only)
 │       ├── test-handoff.md
 │       ├── spec-audit.md           ← Spec-enforcer writes at 4.4
-│       ├── pr-body.md              ← Andrea generates at 4.5 from handoffs
+│       ├── pr-body.md              ← André generates at 4.5 from handoffs
 │       └── screenshots/            (UI stories only — T3 outputs)
 ```
 
@@ -182,7 +182,7 @@ ctrfhub/
 | **PR title** | `[<taskId>] <summary>` — e.g. `[INFRA-001] Project scaffold and toolchain` |
 | **PR body** | Generated from `.argos/<taskId>/pr-body.md`. Must include: Story ID link, tier-completion checkboxes, one-line summary of each declared acceptance criterion, decisions-that-deviate-from-spec section |
 | **Merge strategy** | Squash-merge. PR body becomes the merge commit message; `main` history stays readable |
-| **Branch protection** | `main` requires: PR-Agent review passed, PR approved by Andrea, "Require conversations to be resolved" |
+| **Branch protection** | `main` requires: PR-Agent review passed, PR approved by André, "Require conversations to be resolved" |
 
 ---
 
@@ -193,9 +193,9 @@ ctrfhub/
 | `[ ]` → `[/]` | `docs/planning/tasks.md` | Argos (on `story/<taskId>` branch) | At task assignment (4.1), first commit on the branch |
 | `[/]` → `[x]` | `docs/planning/tasks.md` | Argos (on `story/<taskId>` branch, just before PR opens) | After all tiers pass + Spec-enforcer PASS, as the final commit before `gh pr create` |
 | New gap | `docs/planning/gaps.md` | Argos or agent that spotted it | Anytime |
-| P0 gap resolution | `docs/planning/gaps.md` | Argos after human sign-off | When Andrea decides |
+| P0 gap resolution | `docs/planning/gaps.md` | Argos after human sign-off | When André decides |
 | Per-story work | `.argos/<taskId>/` | All roles | During story |
-| Audit trail | PR description on GitHub | Andrea | At PR open |
+| Audit trail | PR description on GitHub | André | At PR open |
 
 ---
 
@@ -203,13 +203,13 @@ ctrfhub/
 
 | Trigger | Action |
 |---|---|
-| Any tier fails twice | Test-writer halts, writes a BLOCK report, Argos surfaces to Andrea |
+| Any tier fails twice | Test-writer halts, writes a BLOCK report, Argos surfaces to André |
 | Spec-enforcer returns BLOCK | Argos routes back to Feature-implementer with remediation; session 4.2 repeats from the top |
-| Feature-implementer makes a decision not in planning docs | Flag in `feature-handoff.md`; Spec-enforcer evaluates; if unresolved, Andrea decides |
+| Feature-implementer makes a decision not in planning docs | Flag in `feature-handoff.md`; Spec-enforcer evaluates; if unresolved, André decides |
 | TypeScript errors at 4.2 handoff | Feature-implementer must resolve before Test-writer session starts |
-| P0 gap blocks a story | Argos halts assignment, surfaces to Andrea, waits for sign-off |
+| P0 gap blocks a story | Argos halts assignment, surfaces to André, waits for sign-off |
 | Agents disagree on a rule | Precedence: `docs/planning/product.md` > `docs/planning/architecture.md` > `docs/planning/project-plan.md` > skills |
-| Andrea wants to intervene mid-story | Andrea can edit files directly; next session of whichever role reads the new state from disk |
+| André wants to intervene mid-story | André can edit files directly; next session of whichever role reads the new state from disk |
 
 ---
 
@@ -238,7 +238,7 @@ Track the build of this system here. Each row is an atomic piece of the architec
 | 17 | PR body template (`.argos/<taskId>/pr-body.md`) | B | ⬜ | Inline in `implementstory.md` | Source of truth for PR description |
 | 18 | GitHub PR template | B | ⬜ | `.github/pull_request_template.md` | Pre-fills the PR body from the template above |
 | 19 | `high-stakes` GitHub label | B | ⬜ | GitHub repo Settings | `gh label create high-stakes --color B60205` |
-| 20 | Branch protection on `main` | B | ⬜ | GitHub repo Settings | Require PR-Agent green + Andrea approval + resolved conversations |
+| 20 | Branch protection on `main` | B | ⬜ | GitHub repo Settings | Require PR-Agent green + André approval + resolved conversations |
 | 21 | PR-Agent cloud review | B | ✅ | `.github/workflows/pr-review.yml` | Confirmed working |
 | 22 | Claude bridge | B | ✅ | `~/Sites/ai_guidance/agent/claude-bridge.sh` | Host-side command execution |
 | 23 | `tasks.md` transition protocol (single-line rule) | B | ⬜ | This doc §7 | Already described; no extra wiring needed |
@@ -262,6 +262,6 @@ Track the build of this system here. Each row is an atomic piece of the architec
 
 ## 10. What "done" looks like for the architecture
 
-Tier A is fully ✅. Tier B is fully ✅. At that point the workflow is operational end-to-end and Andrea can run `/implementstory INFRA-001` (by opening an Argos session and saying "Assign INFRA-001"), relay through the sessions, open the PR, merge, and mark the story done — without ambiguity at any step.
+Tier A is fully ✅. Tier B is fully ✅. At that point the workflow is operational end-to-end and André can run `/implementstory INFRA-001` (by opening an Argos session and saying "Assign INFRA-001"), relay through the sessions, open the PR, merge, and mark the story done — without ambiguity at any step.
 
 Tier C and D grow as needed, without blocking forward motion.
