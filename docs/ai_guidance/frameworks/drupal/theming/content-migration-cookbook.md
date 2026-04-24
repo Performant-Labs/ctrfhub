@@ -9,7 +9,7 @@ Read this document **in full** before writing any script or running any
 Drush command in Phase 9.
 
 > [!IMPORTANT]
-> **Before verifying any page migrated using this document**: Read [`verification-cookbook.md`](verification-cookbook.md). It defines the Three-Tier Hierarchy (Headless → ARIA → Visual) that must govern all verification. Do NOT call `browser_subagent` (screenshots) until a Tier 2 ARIA audit passes.
+> **Before verifying any page migrated using this document**: Read [`verification-cookbook.md`](../../../testing/verification-cookbook.md). It defines the Three-Tier Hierarchy (Headless → ARIA → Visual) that must govern all verification. Do NOT call `browser_subagent` (screenshots) until a Tier 2 ARIA audit passes.
 
 ---
 
@@ -919,7 +919,7 @@ One category at a time — do not present all categories simultaneously.
 
 ## Verification Gate
 
-Perform these checks after all categories are complete to confirm data integrity. For construction and visual verification (Tier 2 & 3), follow the [**Verification Cookbook**](verification-cookbook.md).
+Perform these checks after all categories are complete to confirm data integrity. For construction and visual verification (Tier 2 & 3), follow the [**Verification Cookbook**](../../../testing/verification-cookbook.md).
 
 ### Data Parity (Tier 1)
 ```bash

@@ -3,7 +3,7 @@
 This document defines the mandatory pre-flight checklist that must pass before any Drush script or Twig override is written that touches Canvas page components. It applies equally to initial assembly, additions, and corrections. It was created after a session where multiple fix scripts were required because these checks were skipped.
 
 > [!IMPORTANT]
-> **Before verifying any page built or modified by this document**: Read [`verification-cookbook.md`](verification-cookbook.md). It defines the Three-Tier Hierarchy (Headless → ARIA → Visual) that must govern all verification. Do NOT call `browser_subagent` (screenshots) until a Tier 2 ARIA audit passes.
+> **Before verifying any page built or modified by this document**: Read [`verification-cookbook.md`](../../../testing/verification-cookbook.md). It defines the Three-Tier Hierarchy (Headless → ARIA → Visual) that must govern all verification. Do NOT call `browser_subagent` (screenshots) until a Tier 2 ARIA audit passes.
 
 > [!IMPORTANT]
 > Updated 2026-04-17 with lessons from the Services page migration. See sections: **Media Image References**, **Enum Value Ceilings**, **Canvas Page Internal Path**, **Adding Props to Canvas Config Entities**, and **Canvas Page Title Field**.

@@ -17,7 +17,7 @@ All files below live alongside this SOP in `docs/frameworks/drupal/theming/`. Re
 | [`component-cookbook.md`](component-cookbook.md) | Authoritative prop/slot names for every dripyard_base component — never write `inputs` JSON from memory | Phase 4 (build) + Phase 9 (pre-script) |
 | [`content-migration-cookbook.md`](content-migration-cookbook.md) | Step-by-step migration patterns, inventory commands, dependency ordering, form framework assessment | Phase 13 |
 | [`operational-guidance.md`](operational-guidance.md) | Efficiency rules, known config traps, verification shortcuts, screenshot timing, failure patterns from live runs | Phase 0 / start of every run |
-| [`verification-cookbook.md`](verification-cookbook.md) | Authoritative reference for the **Three-Tier Hierarchy** and **"Skeleton-First"** (ARIA) testing strategy | Phase 0 / before any verification |
+| [`verification-cookbook.md`](../../../testing/verification-cookbook.md) | Authoritative reference for the **Three-Tier Hierarchy** and **"Skeleton-First"** (ARIA) testing strategy | Phase 0 / before any verification |
 | [`visual-regression-strategy.md`](visual-regression-strategy.md) | Panel-by-panel visual regression protocol — one subagent call per design slice | Phase 8, 10, 16 |
 
 > [!NOTE]
@@ -85,7 +85,7 @@ Never parallelize operations with dependencies — `drush cr` must complete befo
 </parallelism_guidance>
 
 <subagent_policy>
-To maximize developer velocity, follow the **Three-Tier Verification Hierarchy** as defined in the [**Verification Cookbook**](verification-cookbook.md). Always use the fastest tool that provides sufficient structural confirmation before escalating to slower, more resource-intensive tools.
+To maximize developer velocity, follow the **Three-Tier Verification Hierarchy** as defined in the [**Verification Cookbook**](../../../testing/verification-cookbook.md). Always use the fastest tool that provides sufficient structural confirmation before escalating to slower, more resource-intensive tools.
 
 1. **Tier 1: Headless (Instant)**
    - Use `curl` for HTTP status, HTML tag presence, CSS variables, and server-side text content.
@@ -104,7 +104,7 @@ Once a user approves an Approval Checkpoint, those architectural decisions are f
 <session_continuity>
 At the start of each working session:
 1. Run `git log --oneline -10` to identify where the previous session ended.
-2. **Read [`verification-cookbook.md`](verification-cookbook.md)** — this is mandatory at the start of every session. It defines the Three-Tier Hierarchy that governs all page verification. Do not begin any verification task without reviewing it.
+2. **Read [`verification-cookbook.md`](../../../testing/verification-cookbook.md)** — this is mandatory at the start of every session. It defines the Three-Tier Hierarchy that governs all page verification. Do not begin any verification task without reviewing it.
 3. Record current phase, active section, and any open failure paths at `docs/frameworks/drupal/theming/session_progress.md` (gitignored).
 4. Reconstruct state from the commit log and phase gates — never from memory alone.
 </session_continuity>
