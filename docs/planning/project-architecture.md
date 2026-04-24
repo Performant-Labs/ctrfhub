@@ -237,8 +237,8 @@ Track the build of this system here. Each row is an atomic piece of the architec
 | 16 | Spec-audit template | B | ✅ | `spec-enforcer.md` §Spec-audit template | Findings / Coverage / Conformance / Forbidden-pattern / Verdict |
 | 17 | PR body template (`.argos/<taskId>/pr-body.md`) | B | ✅ | `implementstory.md` §Phase 8 | Acceptance checkboxes, tier results, deviations, gaps, next-stories |
 | 18 | GitHub PR template | B | ✅ | `.github/pull_request_template.md` | Structurally aligned with the Phase 8 template; overridden by `--body-file` when Argos opens the PR |
-| 19 | `high-stakes` GitHub label | B | ⬜ | GitHub repo Settings | `gh label create high-stakes --color B60205` |
-| 20 | Branch protection on `main` | B | ⬜ | GitHub repo Settings | Require PR-Agent green + André approval + resolved conversations |
+| 19 | `high-stakes` GitHub label | B | ✅ | GitHub repo (applied via `gh` over the bridge) | Color `#B60205`, description routes PR-Agent to Opus 4.6 |
+| 20 | Branch protection on `main` | B | ✅ | GitHub ruleset "Protect Main" (id 15490272) | Enforces: no deletion, no force-push, conversations resolved, `pr-agent` status check green, squash-only. Required to flip repo to public (2026-04-24) to unlock rulesets on GitHub Free. |
 | 21 | PR-Agent cloud review | B | ✅ | `.github/workflows/pr-review.yml` | Confirmed working |
 | 22 | Claude bridge | B | ✅ | `~/Sites/ai_guidance/agent/claude-bridge.sh` | Host-side command execution |
 | 23 | `tasks.md` transition protocol (single-line rule) | B | ⬜ | This doc §7 | Already described; no extra wiring needed |
