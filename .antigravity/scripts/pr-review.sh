@@ -24,7 +24,7 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 PR_NUMBER="${1:-}"
 POST_TO_GH=false
-MODEL="${ARGOS_MODEL:-claude-sonnet-4-6}"
+MODEL="${ARGOS_MODEL:-claude-opus-4-7}"
 
 if [[ -z "$PR_NUMBER" ]]; then
   echo "Usage: $0 <PR-number> [--post] [--model <model>]" >&2

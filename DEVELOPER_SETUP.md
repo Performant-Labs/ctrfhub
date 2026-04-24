@@ -101,6 +101,30 @@ From the repo root (where `CLAUDE.md` lives), in any normal terminal:
 This works in an interactive terminal session because Keychain is accessible.
 OAuth tokens are used — no API key needed.
 
+### Model defaults
+
+Each review tier has a default model. You set it once; every review uses it automatically.
+
+| Tier | Default model | Config location | Override |
+|---|---|---|---|
+| **PR-Agent (cloud)** | `openrouter/moonshotai/kimi-k2-thinking` | `.pr_agent.toml` → `[config] model` | Edit file, or add `high-stakes` label for Opus 4.6 |
+| **Argos (local)** | `claude-opus-4-7` | `pr-review.sh` → `ARGOS_MODEL` fallback | `--model <name>` flag, or `export ARGOS_MODEL=<name>` |
+
+**To change the PR-Agent default**, edit `.pr_agent.toml`:
+```toml
+model = "openrouter/moonshotai/kimi-k2-thinking"   # ← change this
+fallback_models = ["openrouter/anthropic/claude-opus-4.6"]
+```
+
+**To change the Argos default**, either:
+```bash
+# Option A: set in your shell profile (~/.zprofile) — persists across sessions
+export ARGOS_MODEL=claude-opus-4-7
+
+# Option B: one-off override
+.antigravity/scripts/pr-review.sh 2 --post --model claude-sonnet-4-6
+```
+
 ### Readiness check
 
 ```bash
