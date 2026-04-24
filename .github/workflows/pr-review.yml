@@ -40,6 +40,7 @@ jobs:
           fetch-depth: 0
 
       - name: PR-Agent review (default model — Kimi K2.6 Thinking via OpenRouter)
+        id: review-default
         # If the PR is labelled `high-stakes`, skip this step — the high-stakes step below handles it with Opus 4.6.
         if: ${{ !contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
         uses: qodo-ai/pr-agent@main
@@ -51,6 +52,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: PR-Agent review — high-stakes (Opus 4.6)
+        id: review-highstakes
         # Triggered when the `high-stakes` label is present.
         if: ${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
         uses: qodo-ai/pr-agent@main
@@ -59,6 +61,31 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONFIG.MODEL: "openrouter/anthropic/claude-opus-4.6"
           CONFIG.FALLBACK_MODELS: '["openrouter/moonshotai/kimi-k2-thinking"]'
+
+      - name: Stamp review with model attribution
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUM="${{ github.event.pull_request.number || github.event.issue.number }}"
+          if [[ -z "$PR_NUM" || "$PR_NUM" == "null" ]]; then
+            echo "No PR number — skipping stamp"
+            exit 0
+          fi
+
+          # Determine which model ran
+          if [[ "${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}" == "true" ]]; then
+            MODEL="openrouter/anthropic/claude-opus-4.6"
+          else
+            MODEL="openrouter/moonshotai/kimi-k2-thinking"
+          fi
+
+          START="${{ github.event.pull_request.updated_at || github.event.comment.created_at }}"
+          NOW=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+          gh pr comment "$PR_NUM" --repo "${{ github.repository }}" \
+            --body "> **Reviewer:** PR-Agent · **Model:** \`${MODEL}\` · **Completed:** ${NOW}"
+
 
 # Argos local review (claude -p) is intentionally NOT automated in CI.
 #

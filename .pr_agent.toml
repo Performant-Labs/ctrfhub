@@ -30,7 +30,6 @@ inline_code_comments = true
 automatic_review = true
 persistent_comment = true
 final_update_message = false
-enable_ai_metadata = true
 extra_instructions = """
 You are the SPEC-ENFORCER AGENT for CTRFHub. Your job is drift detection, not code improvement.
 
@@ -63,7 +62,6 @@ OUTPUT SHAPE:
 - Lead the review with a one-line verdict: BLOCKING / NITS / CLEAN.
 - Then the sections PR-Agent normally produces.
 - Inline comments should focus on the exact lines that violate a cited rule.
-- End the review with a metadata footer: **Model:** <your model name and version>, **Review time:** <elapsed seconds>s
 """
 
 [pr_code_suggestions]
