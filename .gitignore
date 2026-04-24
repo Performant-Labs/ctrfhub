@@ -144,3 +144,7 @@ vite.config.ts.timestamp-*
 
 # Claude bridge spool — per-protocol (see docs/ai_guidance/agent/claude-bridge.md)
 .claude-bridge/
+
+# Argos multi-session scratchpad — per-protocol (see docs/planning/project-architecture.md §5)
+# Briefs, handoffs, tier reports, screenshots. Ephemeral; PR description carries audit trail.
+.argos/

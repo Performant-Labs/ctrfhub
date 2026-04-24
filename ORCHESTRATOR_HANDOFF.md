@@ -2,6 +2,8 @@
 
 > **READ THIS FIRST** if you are the Orchestrator agent starting a new session. This document gives you complete operational context. After reading it you should be able to assign the first task without consulting any other file first.
 
+> **Workflow reference:** the canonical description of how the multi-session agent workflow operates (roles, artifact locations, `.argos/<taskId>/` layout, branch/commit conventions, escalation paths) is `docs/planning/project-architecture.md`. This handoff is the *operational* entry point for Argos; `project-architecture.md` is the *design* of the whole system. If the two ever contradict each other, `project-architecture.md` wins.
+
 ---
 
 ## Agent Registry

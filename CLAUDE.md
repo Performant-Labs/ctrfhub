@@ -18,12 +18,13 @@ Stack: Node.js 22 LTS · Fastify · TypeScript (strict) · Zod · MikroORM v7 (P
 
 ## Authoritative context — read in this order
 
-1. `docs/planning/project-plan.md` — north star; stack, MVP scope, HTMX 4.0 forward-compat rules
-2. `docs/planning/architecture.md` — conventions (HTMX/Alpine boundary, viewport posture, rate limiting, security headers)
-3. `docs/planning/product.md` — MVP feature requirements
-4. `docs/planning/database-design.md` — entity model and relationships
-5. Remaining `docs/planning/*.md` — deployment, settings, testing, AI features, gap reviews
-6. `docs/planning/*` is the **authoritative spec**. Do not suggest changes to it during PR review or implementation work. If an ambiguity exists, flag it — don't resolve it unilaterally.
+1. `docs/planning/project-architecture.md` — **how this team works** (multi-session agent workflow, roles, artifact layout, branch/commit/PR conventions, escalation paths). Read this first; everything else is either spec or scaffolding that sits inside this workflow.
+2. `docs/planning/project-plan.md` — north star; stack, MVP scope, HTMX 4.0 forward-compat rules
+3. `docs/planning/architecture.md` — conventions (HTMX/Alpine boundary, viewport posture, rate limiting, security headers)
+4. `docs/planning/product.md` — MVP feature requirements
+5. `docs/planning/database-design.md` — entity model and relationships
+6. Remaining `docs/planning/*.md` — deployment, settings, testing, AI features, gap reviews
+7. `docs/planning/*` is the **authoritative spec**. Do not suggest changes to it during PR review or implementation work. If an ambiguity exists, flag it — don't resolve it unilaterally.
 
 ## Agent infrastructure (produced by Phase 1 scaffolding)
 
