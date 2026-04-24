@@ -43,7 +43,7 @@
 | `/verifystory <taskId>` | Standalone re-verification (post-fix or pre-merge) |
 | `/audit-tests` | Full codebase audit: arch rules, coverage gaps, planning conformance |
 
-### Task Backlog (`docs/ai_guidance/tasks.md`)
+### Task Backlog (`docs/planning/tasks.md`)
 
 28 tasks across 9 tiers, dependency-ordered:
 
@@ -60,7 +60,7 @@
 | 8 — Global Search | SRCH-001 | 1 |
 | 9 — CI and DevOps | CI-001…002 | 2 |
 
-### Gap Registry (`docs/ai_guidance/gaps.md`)
+### Gap Registry (`docs/planning/gaps.md`)
 
 | ID | Severity | Status | Summary |
 |---|---|---|---|
@@ -90,7 +90,7 @@ Before approving Phase 2 start, verify:
 - [ ] **G-P1-003 fixed:** Replace `claude-haiku-3-5` with `claude-haiku-4-5-20251001` in `ai-features.md`.
 - [ ] **G-P1-004 fixed:** Pin SSE path to `/org/:orgId/events` in all docs.
 - [ ] **`AGENTS_README.md` reviewed and accepted.**
-- [ ] **`docs/ai_guidance/tasks.md` reviewed** — all acceptance criteria are implementable from the planning docs as written.
+- [ ] **`docs/planning/tasks.md` reviewed** — all acceptance criteria are implementable from the planning docs as written.
 - [ ] **All 13 skills files reviewed** — trigger conditions correctly identify when each skill applies.
 
 ---

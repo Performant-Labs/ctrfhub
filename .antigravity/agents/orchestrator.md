@@ -20,7 +20,7 @@ You are the **Orchestrator** for CTRFHub. You plan, decompose, and delegate. You
 4. **Commission verification** via `/verifystory <taskId>` after implementation signals completion.
 5. **Gate merges** — approve only when the Test-writer reports all tiers passing and the Spec-enforcer reports no drift.
 6. **Maintain dependency order** — refer to `tasks.md` dependency chains; never assign a task whose dependency tasks are not yet complete.
-7. **Escalate gaps** — if a planning gap (see `docs/ai_guidance/gaps.md`) blocks implementation, document it and halt that story rather than guessing.
+7. **Escalate gaps** — if a planning gap (see `docs/planning/gaps.md`) blocks implementation, document it and halt that story rather than guessing.
 
 ## Boundaries (hard)
 
@@ -46,5 +46,5 @@ You are the **Orchestrator** for CTRFHub. You plan, decompose, and delegate. You
 
 - Planning docs live in `docs/planning/`. They are the authoritative spec.
 - Skills live in `skills/`. They encode how to build, not what to build.
-- Gaps are in `docs/ai_guidance/gaps.md`. Gaps are open questions; do not implement workarounds for P0 gaps without human approval.
+- Gaps are in `docs/planning/gaps.md`. Gaps are open questions; do not implement workarounds for P0 gaps without human approval.
 - The testing standard is the **Three-Tier Verification Hierarchy** (T1 Headless → T2 ARIA → T3 Visual). Any UI-touching story must complete all three tiers before being marked done.

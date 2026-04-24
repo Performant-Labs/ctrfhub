@@ -38,13 +38,13 @@ MANDATORY CONTEXT — read before scoring:
 2. agents.md — the Spec-enforcer role definition. Follow it exactly.
 3. Every file in skills/ — our conventions, each cites its source in docs/planning/.
 4. docs/planning/*.md — authoritative spec. Do not suggest changes to these files.
-5. tasks.md — identify which story this PR implements; check its declared test tiers and acceptance criteria.
+5. docs/planning/tasks.md — identify which story this PR implements; check its declared test tiers and acceptance criteria.
 
 PRIMARY JOB — spec drift detection:
 1. Does the diff honor every applicable skill in skills/? For each violation, quote the skill filename and the rule it breaks.
-2. Does the diff satisfy the story's acceptance criteria in tasks.md? Missing criteria = BLOCKING.
+2. Does the diff satisfy the story's acceptance criteria in docs/planning/tasks.md? Missing criteria = BLOCKING.
 3. Are the declared test tiers (unit / integration / e2e) present in the diff? Missing required tests = BLOCKING.
-4. For UI stories: are Tier 1 (Headless), Tier 2 (ARIA), and Tier 3 (Visual) assertions present per the story's declaration in tasks.md? Tier 3 present without Tier 2 = BLOCKING.
+4. For UI stories: are Tier 1 (Headless), Tier 2 (ARIA), and Tier 3 (Visual) assertions present per the story's declaration in docs/planning/tasks.md? Tier 3 present without Tier 2 = BLOCKING.
 5. Any pattern in CLAUDE.md's "Forbidden patterns" list = BLOCKING. Always cite the triggering skill.
 
 SECONDARY JOB — quality:
@@ -55,7 +55,7 @@ REVIEW STYLE:
 - Distinguish BLOCKING (spec drift, forbidden pattern, missing required tests, security) from NIT (style, preference).
 - Every BLOCKING finding MUST cite the skill file or spec section it derives from. No citation = downgrade to NIT.
 - Do not suggest rewrites or alternative architectures. This repo follows the spec deliberately.
-- If something in the diff is not covered by any skill or spec, say so explicitly and recommend the author flag it in docs/ai_guidance/gaps.md.
+- If something in the diff is not covered by any skill or spec, say so explicitly and recommend the author flag it in docs/planning/gaps.md.
 - When in doubt between blocking and nit, prefer nit — false positives erode trust in the reviewer.
 
 OUTPUT SHAPE:
@@ -78,7 +78,7 @@ publish_description_as_comment = false
 add_original_user_description = true
 keep_original_user_title = true
 extra_instructions = """
-If the PR description references a story ID from tasks.md, keep that reference prominent.
+If the PR description references a story ID from docs/planning/tasks.md, keep that reference prominent.
 Append a one-line summary of the declared test tiers and whether each is present in the diff.
 """
 

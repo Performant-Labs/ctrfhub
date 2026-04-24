@@ -13,7 +13,7 @@ CTRFHub is a self-hosted, open-source test-reporting dashboard native to the CTR
 ## 2. Hard rules for this session
 
 1. **Do NOT write application code.** No `src/`, no `package.json`, no migrations, no route handlers. The only code-adjacent artifact allowed is example snippets inside skill files.
-2. **Do NOT modify `docs/planning/*`.** Treat it as read-only spec. If you find a gap, log it in `docs/ai_guidance/gaps.md` and continue — do not "fix" the spec.
+2. **Do NOT modify `docs/planning/*`.** Treat it as read-only spec. If you find a gap, log it in `docs/planning/gaps.md` and continue — do not "fix" the spec.
 3. **Do NOT invent architectural decisions.** Every rule you encode into a skill must cite the doc section it came from. If docs are silent on a point, flag it in `gaps.md`.
 4. **Do NOT reduce scope.** Don't decide the product is smaller than the spec says. If something looks too big, flag it; don't trim it.
 5. **Stop at the Phase 1 checkpoint** (end of this brief). A human will review before Phase 2 (feature implementation) starts.
@@ -167,7 +167,7 @@ Order: foundational infra → ingestion → storage + retention → dashboard re
 
 One page max. Covers: directory layout (`skills/`, `agents.md`, `.antigravity/workflows/`, `tasks.md`), how to kick off a story (`/implementstory <id>`), how to review a diff (workflow stops before merge; human reads the review bundle), what to do when an agent gets stuck (escalate via `HANDOFF.md`), where the spec lives (`docs/planning/`, read-only).
 
-### 4.6 `docs/ai_guidance/gaps.md`
+### 4.6 `docs/planning/gaps.md`
 
 Running log of anything the docs are silent or contradictory on that blocked skill authoring. For each: the question, which docs you checked, a proposed answer (but do not adopt it — flag for human).
 

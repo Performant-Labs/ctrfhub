@@ -19,7 +19,7 @@ How to wire up **Qodo PR-Agent** as the automated Spec-enforcer for CTRFHub pull
 | `CLAUDE.md` | Pointer document PR-Agent (and any other Claude-family agent) reads to understand project context, authoritative specs, and forbidden patterns |
 | `.pr_agent.toml` | PR-Agent's primary config — model, prompt instructions (the Spec-enforcer role), output format |
 | `.github/workflows/pr-review.yml` | GitHub Actions workflow — wires up the trigger, secrets, and label-based model routing |
-| `docs/ai_guidance/pr-agent-setup.md` | This file |
+| `docs/planning/pr-agent-setup.md` | This file |
 
 ## One-time setup
 
@@ -115,7 +115,7 @@ On any non-draft PR, PR-Agent posts a review within ~60 s of the last commit. St
 2. If the cited skill is misread, either:
    - Sharpen the "Good example" / "Bad example" section of that skill so the rule is unambiguous.
    - Or clarify the "How to apply" section.
-3. If the skill is right but this case is a legitimate exception, resolve the conversation and merge. Note the exception in `docs/ai_guidance/gaps.md` so it's on the radar for future skill refinement.
+3. If the skill is right but this case is a legitimate exception, resolve the conversation and merge. Note the exception in `docs/planning/gaps.md` so it's on the radar for future skill refinement.
 
 ### False negative (misses a real drift)
 

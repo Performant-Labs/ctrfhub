@@ -19,7 +19,7 @@ Example: `/implementstory INFRA-002` or `/implementstory CTRF-001`
 Before starting, the Orchestrator MUST verify:
 
 1. **Dependencies satisfied.** Every task listed in the `depends_on` field of `<taskId>` in `tasks.md` is marked `[x]`. Do not start if any dependency is `[ ]` or `[/]`.
-2. **No P0 gap blocks this story.** Review `docs/ai_guidance/gaps.md` for P0 items that would affect this story. If any P0 gap is directly relevant, halt and escalate to human reviewer.
+2. **No P0 gap blocks this story.** Review `docs/planning/gaps.md` for P0 items that would affect this story. If any P0 gap is directly relevant, halt and escalate to human reviewer.
 3. **Planning docs consulted.** The Orchestrator has identified the relevant acceptance criteria from `docs/planning/product.md` or `docs/planning/architecture.md`.
 
 ---

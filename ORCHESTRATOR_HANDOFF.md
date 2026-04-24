@@ -33,8 +33,8 @@ You are the **Orchestrator**. Your full role definition is in `.antigravity/agen
 - Skills files (`skills/`) — 13 files encoding *how* to build
 - Agent roles (`.antigravity/agents/`) — 4 role definitions
 - Workflows (`.antigravity/workflows/`) — 3 workflow definitions
-- Task backlog (`docs/ai_guidance/tasks.md`) — 28 tasks, all `[ ]` (not started)
-- Gap registry (`docs/ai_guidance/gaps.md`) — open planning questions
+- Task backlog (`docs/planning/tasks.md`) — 28 tasks, all `[ ]` (not started)
+- Gap registry (`docs/planning/gaps.md`) — open planning questions
 
 ---
 
@@ -55,10 +55,12 @@ You are the **Orchestrator**. Your full role definition is in `.antigravity/agen
 │   │   ├── ai-features.md                — AI pipeline A1–A9, durability, consent
 │   │   ├── settings-architecture.md      — All settings screens and DB tables
 │   │   ├── database-design.md            — Entity schemas and DDs
-│   │   └── gap-review-merged.md          — Raw gap analysis (use gaps.md instead)
-│   └── ai_guidance/
-│       ├── tasks.md                      ← YOUR TASK BACKLOG — update status here
-│       └── gaps.md                       ← Check before assigning any story
+│   │   ├── gap-review-merged.md          — Raw gap analysis (use gaps.md instead)
+│   │   ├── tasks.md                      ← YOUR TASK BACKLOG — update status here
+│   │   ├── gaps.md                       ← Check before assigning any story
+│   │   ├── opus-4-6-phase-1-brief.md     — Daed's Phase 1 scaffolding brief
+│   │   └── pr-agent-setup.md             — GitHub PR-Agent review setup
+│   └── ai_guidance/                      ← Subtree of ~/Sites/ai_guidance (org-wide standards, read-only here)
 │
 ├── skills/                               ← 13 skill files (read trigger conditions)
 │   ├── htmx-alpine-boundary.md
@@ -91,7 +93,7 @@ You are the **Orchestrator**. Your full role definition is in `.antigravity/agen
 
 ## Open Gaps — Check Before Assigning Any Story
 
-Read `docs/ai_guidance/gaps.md` for the full list. Critical open items:
+Read `docs/planning/gaps.md` for the full list. Critical open items:
 
 | Gap ID | Severity | Affects | Status |
 |---|---|---|---|
@@ -114,7 +116,7 @@ Before assigning INFRA-003 or any UI story, verify with the human:
 1. G-P0-001: Is `[data-theme]` + `@theme` integration confirmed? (proposed: runtime CSS var override)
 2. G-P0-002: Is Eta confirmed as the template engine?
 
-If the human says "yes, proceed" — mark those gaps `✅ Closed` in `docs/ai_guidance/gaps.md`.
+If the human says "yes, proceed" — mark those gaps `✅ Closed` in `docs/planning/gaps.md`.
 
 ### Step 1 — Assign INFRA-001
 
@@ -127,12 +129,12 @@ Task ID: INFRA-001
 Description: Project scaffold and toolchain
 Role file: .antigravity/agents/feature-implementer.md
 Required skills: skills/mikroorm-dual-dialect.md, skills/zod-schema-first.md
-Acceptance criteria: (copy verbatim from docs/ai_guidance/tasks.md §INFRA-001)
+Acceptance criteria: (copy verbatim from docs/planning/tasks.md §INFRA-001)
 Dependencies: none
 Known gaps affecting this task: none
 ```
 
-Mark INFRA-001 as `[/]` in `docs/ai_guidance/tasks.md` when assigned.
+Mark INFRA-001 as `[/]` in `docs/planning/tasks.md` when assigned.
 
 ### Step 2 — Parallel tracks after INFRA-001 completes
 
@@ -221,8 +223,8 @@ These are locked. Do not re-debate them or allow Feature-implementer to deviate:
 | `/setup` returns `410 Gone` once users table non-empty | `skills/better-auth-session-and-api-tokens.md` |
 | `/health` returns `503` during `booting`/`migrating` | `docs/planning/architecture.md §Health endpoint` |
 | `<meta viewport content="width=1280">` | `skills/viewport-mobile-first-desktop-only.md` |
-| CTRF `status: 'other'` is valid — must be handled | `docs/ai_guidance/gaps.md §G-P2-004` |
-| SSE path is `/org/:orgId/events` | `docs/ai_guidance/gaps.md §G-P1-004` |
+| CTRF `status: 'other'` is valid — must be handled | `docs/planning/gaps.md §G-P2-004` |
+| SSE path is `/org/:orgId/events` | `docs/planning/gaps.md §G-P1-004` |
 
 ---
 

@@ -71,4 +71,4 @@ A structured drift report with sections:
 
 - You have no memory of prior audit runs unless provided the previous report.
 - When in doubt about a rule, cite the planning doc or skill file directly — do not interpolate.
-- A `BLOCK` on a P0-severity finding in `docs/ai_guidance/gaps.md` requires human review before the Orchestrator can proceed.
+- A `BLOCK` on a P0-severity finding in `docs/planning/gaps.md` requires human review before the Orchestrator can proceed.

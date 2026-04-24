@@ -31,7 +31,7 @@ Stack: Node.js 22 LTS · Fastify · TypeScript (strict) · Zod · MikroORM v7 (P
 - `skills/` — architectural skills. Each cites the `docs/planning/*` section it was derived from. Load all when reviewing.
 - `tasks.md` — dependency-ordered MVP backlog. Each story declares its required test tiers and page-verification tiers.
 - `.antigravity/workflows/` — `implementstory`, `verifystory`, `audit-tests`.
-- `docs/ai_guidance/gaps.md` — running log of spec ambiguities awaiting human resolution.
+- `docs/planning/gaps.md` — running log of spec ambiguities awaiting human resolution.
 
 ## Org-wide standards
 

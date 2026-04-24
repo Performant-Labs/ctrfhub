@@ -87,7 +87,7 @@ automatically as your project context. Perform a PR review now.
    in each skill's frontmatter).
 2. Check the diff against every forbidden pattern listed in CLAUDE.md under
    "Forbidden patterns".
-3. Check docs/ai_guidance/tasks.md -- find the story this PR implements (match by
+3. Check docs/planning/tasks.md -- find the story this PR implements (match by
    task ID in the PR description or branch name). Verify that the test tiers declared
    in "Test tiers required" and "Page verification tiers" are present in this diff.
 4. Check for missing integration tests: every new route file must have a corresponding

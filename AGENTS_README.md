@@ -31,12 +31,12 @@ Not every file here gets read automatically. This table tells you what loads, wh
 | `.antigravity/agents/feature-implementer.md` | Feature-implementer at session start | Provided by Argos in the task brief |
 | `.antigravity/agents/test-writer.md` | Test-writer at session start | Provided by Argos in the task brief |
 | `.antigravity/agents/spec-enforcer.md` | Spec-enforcer at session start | Provided by Argos when commissioning an audit |
-| `docs/ai_guidance/tasks.md` | Argos, whenever checking task status | Argos updates this file as stories complete |
-| `docs/ai_guidance/gaps.md` | Argos, before assigning any story | Required precondition check in `implementstory.md` |
+| `docs/planning/tasks.md` | Argos, whenever checking task status | Argos updates this file as stories complete |
+| `docs/planning/gaps.md` | Argos, before assigning any story | Required precondition check in `implementstory.md` |
 
 ### If you are a human starting a session
 
-> **The one-line version:** Open `CLAUDE.md` if you want an overview. Open `ORCHESTRATOR_HANDOFF.md` if you are about to work with Argos. Open `docs/ai_guidance/tasks.md` if you want to see what's next.
+> **The one-line version:** Open `CLAUDE.md` if you want an overview. Open `ORCHESTRATOR_HANDOFF.md` if you are about to work with Argos. Open `docs/planning/tasks.md` if you want to see what's next.
 
 You don't need to manually load `CLAUDE.md` — it's auto-read. But if you're kicking off a new Argos session, paste or load `ORCHESTRATOR_HANDOFF.md` into the conversation as the first message. Argos can reconstruct its state entirely from that document.
 
@@ -75,9 +75,15 @@ skills/
 ├── artifact-security-and-serving.md   — Iframe sandbox; Content-Disposition; rate limits.
 └── viewport-mobile-first-desktop-only.md — Desktop-only product; mobile-first authoring.
 
-docs/ai_guidance/
+docs/planning/
+├── ...authoritative spec docs (project-plan.md, architecture.md, etc.)
 ├── tasks.md    — Dependency-ordered MVP task backlog (start here for Phase 2).
-└── gaps.md     — Open planning gaps with severity and blocking status.
+├── gaps.md     — Open planning gaps with severity and blocking status.
+├── opus-4-6-phase-1-brief.md — Phase 1 scaffolding brief (Daed's instructions).
+└── pr-agent-setup.md         — PR-Agent GitHub review configuration guide.
+
+docs/ai_guidance/
+└── ...subtree of ~/Sites/ai_guidance (org-wide standards — read-only here).
 ```
 
 ---
@@ -98,7 +104,7 @@ Never jump from T1 directly to screenshots. Never call a story done if T2 has un
 
 ## How to Start Phase 2
 
-1. **Human review:** A reviewer must approve this README and `docs/ai_guidance/gaps.md` before any code is written.
+1. **Human review:** A reviewer must approve this README and `docs/planning/gaps.md` before any code is written.
 2. **Resolve P0 gaps:** G-P0-001 (Tailwind/theme) and G-P0-002 (Eta vs Nunjucks) must be confirmed by the human reviewer. G-P0-003 (missing DB schemas) must have column definitions filled in `database-design.md`.
 3. **Start the first story:** Once P0 gaps are resolved, invoke `/implementstory INFRA-001` as the Orchestrator.
 4. **Dependency order:** INFRA-001 → INFRA-002 + INFRA-003 + INFRA-004 (can parallel) → AUTH-001 → AUTH-002 + CTRF-001 (can parallel) → CTRF-002 → ...
