@@ -128,11 +128,25 @@ echo "→ Running Spec-enforcer review via claude -p..." >&2
 # can read skills/, docs/, etc. without prompting for approval.
 # Prompt passed as argument (more reliable than stdin in runner environments).
 PROMPT_CONTENT=$(cat "$PROMPT_FILE")
+
+# Capture model version and wall-clock time
+CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
+START_TIME=$(date +%s)
+
 REVIEW=$(claude -p --dangerously-skip-permissions "$PROMPT_CONTENT") || {
   echo "Error: claude -p exited with code $?" >&2
   echo "Check: ANTHROPIC_API_KEY set? claude auth status?" >&2
   exit 1
 }
+
+END_TIME=$(date +%s)
+ELAPSED=$(( END_TIME - START_TIME ))
+
+# Append metadata footer
+REVIEW="${REVIEW}
+
+---
+> **Reviewer:** Argos (Claude Code — ${CLAUDE_VERSION}) · **Elapsed:** ${ELAPSED}s · **Triggered:** $(date -u '+%Y-%m-%d %H:%M UTC')"
 
 echo ""
 echo "════════════════════════════════════════"
