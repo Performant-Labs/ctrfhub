@@ -27,6 +27,10 @@ DDEV project config lives in `.ddev/config.yaml`. Use `.ddev/config.local.yaml` 
 - Do not edit Drupal core or contributed projects in place.
 - Put custom code in `web/modules/custom` and `web/themes/custom`.
 
+## Running host commands (Claude bridge)
+
+When an agent needs to run something only the host shell can do — `ddev`, `drush`, `git`, `curl` against a local URL, headless Chrome against DDEV — use the **Claude bridge**: the operator runs `./scripts/claude-bridge.sh` in a dedicated terminal and the agent drops request scripts into `.claude-bridge/req-<id>.sh`. See [`claude-bridge.md`](./claude-bridge.md) for the full protocol, patterns, and security caveats.
+
 ## References
 
 - https://docs.ddev.com/en/stable/

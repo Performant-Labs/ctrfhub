@@ -6,7 +6,20 @@ from rich.panel import Panel
 
 console = Console()
 
-PREFIX = "docs"
+def get_subtree_prefix():
+    try:
+        result = subprocess.run(
+            ["git", "log", "--grep=git-subtree-dir:", "-1", "--format=%B"],
+            capture_output=True, text=True, check=True
+        )
+        for line in result.stdout.splitlines():
+            if line.startswith("git-subtree-dir:"):
+                return line.split(":", 1)[1].strip()
+    except Exception:
+        pass
+    return "docs/ai_guidance" if os.path.isdir("docs/ai_guidance") else "docs"
+
+PREFIX = get_subtree_prefix()
 REMOTE = "git@github.com:Performant-Labs/ai_guidance.git"
 BRANCH = "main"
 
