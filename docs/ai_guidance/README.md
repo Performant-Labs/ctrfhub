@@ -6,24 +6,23 @@ A centralized **source-of-truth constraint system and runbook** for AI developer
 
 ```
 ai_guidance/
-├── docs/
-│   ├── agent/                  # Core AI agent rules & SOPs
-│   │   ├── agents.md           # Agent behavior guidelines
-│   │   ├── browser-constraints.md
-│   │   ├── naming.md           # Naming conventions
-│   │   ├── technical-writing.md
-│   │   └── troubleshooting.md  # Master troubleshooting catalog
-│   ├── frameworks/
-│   │   ├── drupal/             # Drupal best practices & theming guides
-│   │   └── vue/                # Vue.js guidance
-│   └── languages/
-│       └── go/                 # Go language guidance
+├── agent/                  # Core AI agent rules & SOPs
+│   ├── agents.md           # Agent behavior guidelines
+│   ├── browser-constraints.md
+│   ├── naming.md           # Naming conventions
+│   ├── technical-writing.md
+│   └── troubleshooting.md  # Master troubleshooting catalog
+├── frameworks/
+│   ├── drupal/             # Drupal best practices & theming guides
+│   └── vue/                # Vue.js guidance
+├── languages/
+│   └── go/                 # Go language guidance
 ├── projects/
-│   └── opencloud/              # Project-specific planning docs
+│   └── opencloud/          # Project-specific planning docs
 ├── scripts/
-│   └── cli/                    # Subtree automation scripts (ai:pull / ai:push)
-├── snippets/                   # Reusable code snippets
-└── themes/                     # Shared Drupal themes (neonbyte, dripyard_base)
+│   └── cli/                # Subtree automation scripts (ai:pull / ai:push)
+├── snippets/               # Reusable code snippets
+└── themes/                 # Shared Drupal themes (neonbyte, dripyard_base)
 ```
 
 ## How It Integrates with Host Projects
@@ -105,12 +104,18 @@ Both commands check for a clean working tree before proceeding and optionally su
 
 | File | Purpose |
 |------|---------|
-| [`docs/agent/troubleshooting.md`](docs/agent/troubleshooting.md) | Master catalog of known issues, hangs, and gotchas |
-| [`docs/agent/browser-constraints.md`](docs/agent/browser-constraints.md) | Headless browser priority rules |
-| [`docs/agent/agents.md`](docs/agent/agents.md) | Agent behavior guidelines |
-| [`docs/agent/naming.md`](docs/agent/naming.md) | Naming conventions (kebab-case, file taxonomy) |
-| [`docs/agent/technical-writing.md`](docs/agent/technical-writing.md) | Documentation style guide |
-| [`docs/frameworks/drupal/best-practices.md`](docs/frameworks/drupal/best-practices.md) | Drupal development best practices |
+| [`agent/troubleshooting.md`](agent/troubleshooting.md) | Master catalog of known issues, hangs, and gotchas |
+| [`agent/browser-constraints.md`](agent/browser-constraints.md) | Headless browser priority rules |
+| [`agent/agents.md`](agent/agents.md) | Agent behavior guidelines |
+| [`agent/claude-bridge.md`](agent/claude-bridge.md) | File-drop protocol for running host-only commands (ddev, drush, curl, Chrome) from a sandboxed agent |
+| [`agent/naming.md`](agent/naming.md) | Naming conventions (kebab-case, file taxonomy) |
+| [`agent/technical-writing.md`](agent/technical-writing.md) | Documentation style guide |
+| [`frameworks/drupal/best-practices.md`](frameworks/drupal/best-practices.md) | Drupal development best practices |
+| [`frameworks/fastify/conventions.md`](frameworks/fastify/conventions.md) | Fastify + TypeScript + Zod conventions (CTRFHub) |
+| [`frameworks/mikro-orm/conventions.md`](frameworks/mikro-orm/conventions.md) | MikroORM v7 dual-dialect (PostgreSQL + SQLite) conventions |
+| [`frameworks/better-auth/conventions.md`](frameworks/better-auth/conventions.md) | Better Auth setup, API tokens, route protection |
+| [`frameworks/htmx/conventions.md`](frameworks/htmx/conventions.md) | HTMX + Alpine.js + Eta conventions, HTMX 4.0 forward-compat rules |
+| [`frameworks/tailwind/conventions.md`](frameworks/tailwind/conventions.md) | Tailwind CSS v4 + Flowbite conventions |
 
 ---
 
