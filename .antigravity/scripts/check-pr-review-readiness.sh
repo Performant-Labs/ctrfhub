@@ -47,9 +47,9 @@ echo "     GitHub → repo → Settings → Secrets and variables → Actions"
 
 echo ""
 
-# ─── Method 2: Argos local review (self-hosted) ───
+# ─── Method 2: Argos local review (manual, claude -p) ───
 
-echo "── Method 2: Argos local review (self-hosted Tailscale runner) ──"
+echo "── Method 2: Argos local review (manual — run from a terminal) ──"
 
 # pr-review.sh exists and is executable
 if [[ -x ".antigravity/scripts/pr-review.sh" ]]; then
@@ -62,7 +62,6 @@ fi
 # claude CLI available
 if command -v claude &>/dev/null; then
   echo "$PASS claude CLI found: $(which claude)"
-  # Try a quick auth check
   if claude auth status &>/dev/null 2>&1; then
     echo "$PASS claude is authenticated"
   else
@@ -86,26 +85,12 @@ else
   ((errors++))
 fi
 
-# Self-hosted runner registered (heuristic: check if runner process is running)
-if pgrep -f "actions/runner" &>/dev/null || pgrep -f "Runner.Listener" &>/dev/null; then
-  echo "$PASS GitHub Actions self-hosted runner process detected"
+# Optional shell alias
+if [[ -f ".antigravity/scripts/shell-aliases.sh" ]]; then
+  echo "$PASS shell-aliases.sh present"
+  echo "     (source it from ~/.zshrc to enable the \`pr:review <PR>\` shortcut)"
 else
-  echo "$WARN No runner process detected locally."
-  echo "     If this machine IS the runner, it may not be running yet."
-  echo "     Setup: GitHub → repo → Settings → Actions → Runners → New self-hosted runner"
-  echo "     Required labels: [self-hosted, tailscale, claude]"
-fi
-
-# Tailscale connected
-if command -v tailscale &>/dev/null; then
-  STATUS=$(tailscale status --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print('up' if d.get('BackendState')=='Running' else 'down')" 2>/dev/null || echo "unknown")
-  if [[ "$STATUS" == "up" ]]; then
-    echo "$PASS Tailscale is connected"
-  else
-    echo "$WARN Tailscale status: $STATUS — ensure the machine is on the Tailscale network"
-  fi
-else
-  echo "$WARN tailscale CLI not found — install Tailscale if this is the designated runner"
+  echo "$WARN shell-aliases.sh missing — the \`pr:review\` shortcut won't be available"
 fi
 
 echo ""
@@ -113,6 +98,10 @@ echo "── Manual local test ──"
 echo "   Run a review against any open PR:"
 echo "   .antigravity/scripts/pr-review.sh <PR-number>"
 echo "   .antigravity/scripts/pr-review.sh <PR-number> --post"
+echo ""
+echo "   Or, if shell-aliases.sh is sourced in your ~/.zshrc:"
+echo "   pr:review <PR-number>"
+echo "   pr:review <PR-number> --post"
 echo ""
 
 # ─── Summary ──────────────────────────────────────

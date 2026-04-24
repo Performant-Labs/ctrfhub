@@ -19,7 +19,6 @@
 
 set -euo pipefail
 
-# Ensure homebrew binaries are on PATH (runner shells may have a minimal PATH)
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 PR_NUMBER="${1:-}"
@@ -52,14 +51,6 @@ for cmd in claude gh; do
   fi
 done
 
-# In non-interactive runner contexts (LaunchAgent), macOS Keychain OAuth tokens
-# are not accessible. ANTHROPIC_API_KEY must be set in the runner environment.
-# Set it in ~/Projects/actions-runner/.env or export it in the LaunchAgent plist.
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  echo "Warning: ANTHROPIC_API_KEY not set. claude may fail in non-interactive" >&2
-  echo "         runner contexts. Set it in ~/Projects/actions-runner/.env" >&2
-fi
-
 echo "→ Fetching PR #${PR_NUMBER} metadata..." >&2
 PR_META=$(gh pr view "$PR_NUMBER" --json title,body,author,headRefName,baseRefName \
   --template '## PR: {{.title}}
@@ -72,8 +63,7 @@ Author: {{.author.login}}
 echo "→ Fetching diff..." >&2
 PR_DIFF=$(gh pr diff "$PR_NUMBER")
 
-# Write prompt to a temp file — avoids nested heredoc/quoting issues
-# in non-interactive runner shells.
+# Write prompt to a temp file to avoid heredoc/quoting issues.
 PROMPT_FILE=$(mktemp /tmp/ctrfhub-pr-review-XXXXXX.md)
 trap 'rm -f "$PROMPT_FILE"' EXIT
 
@@ -94,35 +84,50 @@ automatically as your project context. Perform a PR review now.
    test file in src/__tests__/integration/.
 5. Check dual-dialect migration parity: PG and SQLite migration file counts must match.
 
-## Output format
+## Output format (GitHub-rendered markdown)
 
----
-## Spec-enforcer Review -- PR #${PR_NUMBER}
+Open the review with a GitHub alert callout whose type matches the verdict
+(GitHub renders these as coloured boxes):
 
-### Verdict: PASS | BLOCK | WARN
+- ✅ PASS  → \`> [!TIP]\`      (green)
+- ⚠️ WARN  → \`> [!WARNING]\`  (amber)
+- ❌ BLOCK → \`> [!CAUTION]\`  (red)
+- N/A      → \`> [!NOTE]\`     (blue — for pure-docs PRs where no applicable rules exist)
+
+Do NOT include opening or closing \`---\` separators in the body; the shell
+wrapper appends the divider between the review and the signature footer.
+Use the section headers below exactly as written.
+
+## Spec-enforcer Review — PR #${PR_NUMBER}
+
+> [!TIP]
+> **Verdict:** ✅ PASS — <one-sentence reason>
 
 ### Findings
-(For each finding):
-[BLOCK|WARN|INFO] file:line -- description
-Rule: skill file or CLAUDE.md section
-Fix: specific remediation
+
+For each finding:
+- **[BLOCK | WARN | INFO]** \`file:line\` — description
+  - **Rule:** skill filename or CLAUDE.md section
+  - **Fix:** specific remediation
 
 (If no findings: "No findings. All checked patterns pass.")
 
 ### Test tier coverage
-Story: task ID if found, else "not identified"
-- Test tiers required: from tasks.md or "not found"
-- Present in diff: list what was found
-- Missing: list what was not found, or "none"
+
+- **Story:** task ID if found, else "not identified"
+- **Test tiers required:** from tasks.md, or "not found"
+- **Present in diff:** list what was found
+- **Missing:** list what was not found, or "none"
 
 ### Migration parity
-PG migrations: count
-SQLite migrations: count
-Status: MATCH | MISMATCH
+
+- **PG migrations:** count
+- **SQLite migrations:** count
+- **Status:** ✅ MATCH or ❌ MISMATCH
 
 ### Summary
-2-3 sentence plain-English summary of what the PR does and whether it can merge.
----
+
+2–3 sentence plain-English summary of what the PR does and whether it can merge.
 
 ## PR metadata
 ${PR_META}
@@ -132,8 +137,7 @@ ${PR_DIFF}
 ENDOFPROMPT
 
 echo "→ Running Spec-enforcer review via claude -p --model ${MODEL}..." >&2
-# --dangerously-skip-permissions: required in non-interactive CI context so claude
-# can read skills/, docs/, etc. without prompting for approval.
+# --dangerously-skip-permissions: let claude read skills/ and docs/ without prompting.
 PROMPT_CONTENT=$(cat "$PROMPT_FILE")
 
 # Capture wall-clock time
@@ -141,7 +145,7 @@ START_TIME=$(date +%s)
 
 REVIEW=$(claude -p --model "$MODEL" --dangerously-skip-permissions "$PROMPT_CONTENT") || {
   echo "Error: claude -p exited with code $?" >&2
-  echo "Check: ANTHROPIC_API_KEY set? claude auth status?" >&2
+  echo "Check: claude auth status? PATH correct (homebrew bins)?" >&2
   exit 1
 }
 
@@ -152,7 +156,7 @@ ELAPSED=$(( END_TIME - START_TIME ))
 REVIEW="${REVIEW}
 
 ---
-> **Reviewer:** Argos · **Model:** ${MODEL} · **Elapsed:** ${ELAPSED}s · **Triggered:** $(date -u '+%Y-%m-%d %H:%M UTC')"
+🤖 **Reviewer:** Argos · **Model:** \`${MODEL}\` · **Elapsed:** ${ELAPSED}s · **Generated:** $(date '+%Y-%m-%d %H:%M %Z') · $(date -u '+%Y-%m-%d %H:%M UTC')"
 
 echo ""
 echo "════════════════════════════════════════"

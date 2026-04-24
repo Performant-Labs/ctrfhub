@@ -65,17 +65,42 @@ Settings → Labels → **New label**:
 
 ### 5. Configure branch protection
 
-Settings → Branches → **Branch protection rules → Add rule** for `main`:
+CTRFHub uses a **repository ruleset** ("Protect Main", id `15490272`) rather than the older classic Branch Protection UI. Rulesets are GitHub's current-generation mechanism; classic branch protection still works but is being gradually deprecated. Either gives you the same merge-gate behavior.
+
+**Plan requirement.** Rulesets and classic branch protection are both gated behind **GitHub Pro** or **public visibility** on private repos. On the Free plan + private repo, the API returns 403 "Upgrade to GitHub Pro or make this repository public." CTRFHub is MIT-licensed OSS so the repo is public — rulesets are free.
+
+**What the CTRFHub ruleset enforces on `main`:**
+
+| Rule | Effect |
+|---|---|
+| `pull_request` → `required_review_thread_resolution: true` | All PR conversations must be resolved before merge |
+| `pull_request` → `required_approving_review_count: 0` | **Zero** required human approvals — see solo-dev note below |
+| `pull_request` → `allowed_merge_methods: ["squash"]` | Squash-merge only; `main` history stays readable |
+| `required_status_checks` → context `pr-agent` | The PR-Agent workflow must pass; set `strict_required_status_checks_policy: false` (does not require up-to-date branch) |
+| `non_fast_forward` | No force-push to `main` |
+| `deletion` | No deletion of `main` |
+| no `bypass_actors` | `current_user_can_bypass: never` — admins follow the same rules |
+
+**Solo-dev note on `required_approving_review_count: 0`.** GitHub prevents PR authors from approving their own PRs. With a sole developer, setting this to 1 would lock the author out. The ruleset handles the *automated* floor (PR-Agent green + conversations resolved); the human-approval layer is the developer's personal "read every diff before merging" discipline.
+
+**Creating or updating the ruleset via API:**
+
+```bash
+# Create (or inspect existing with: gh api repos/:owner/:repo/rulesets)
+gh api -X POST repos/:owner/:repo/rulesets \
+  -H "Accept: application/vnd.github+json" \
+  --input ruleset.json
+```
+
+`ruleset.json` mirrors the rules above. A full working payload is recoverable from PR #4's git history if you need to clone this setup into another repo.
+
+**Alternative — classic Branch Protection.** If you prefer the older UI or are on a plan where rulesets aren't available: **Settings → Branches → Branch protection rules → Add rule** for `main`:
 
 - ✅ Require a pull request before merging
-- ✅ Require approvals: **1** (you can relax to 0 if you're solo and the AI review is your only review)
-- ✅ Dismiss stale pull request approvals when new commits are pushed
-- ✅ Require status checks to pass before merging
-  - After the first workflow run, search for `pr-agent` and check it
-- ✅ **Require conversations to be resolved before merging** — this is the mechanism that lets humans override: a flagged concern becomes a blocking conversation, you resolve it to merge
-- ❌ Do **not** check "Do not allow bypassing the above settings" — that would remove override ability
-
-This gives you: every PR gets reviewed by PR-Agent, each flagged concern creates a conversation thread, and you can merge only after all conversations are resolved (either because the code changed or because you explicitly resolved the thread).
+- ✅ Require approvals: **0** for solo devs (or 1 if you have reviewers other than the author)
+- ✅ Require status checks to pass before merging — check `pr-agent` after the first workflow run
+- ✅ Require conversations to be resolved before merging
+- ❌ Do **not** check "Do not allow bypassing the above settings" if you want admin override ability
 
 ## Daily use
 

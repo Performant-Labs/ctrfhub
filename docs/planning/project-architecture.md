@@ -182,7 +182,7 @@ ctrfhub/
 | **PR title** | `[<taskId>] <summary>` — e.g. `[INFRA-001] Project scaffold and toolchain` |
 | **PR body** | Generated from `.argos/<taskId>/pr-body.md`. Must include: Story ID link, tier-completion checkboxes, one-line summary of each declared acceptance criterion, decisions-that-deviate-from-spec section |
 | **Merge strategy** | Squash-merge. PR body becomes the merge commit message; `main` history stays readable |
-| **Branch protection** | `main` requires: PR-Agent review passed, PR approved by André, "Require conversations to be resolved" |
+| **Branch protection** | `main` is protected by GitHub ruleset "Protect Main" (id `15490272`). Enforces: `pr-agent` status check passes · all PR conversations resolved · no force-push · no deletion · squash-merge only. `required_approving_review_count: 0` (GitHub prevents PR authors from approving their own PRs, and with a single developer any higher value would lock the author out). André's personal "read every diff before merging" is the human approval layer on top of the automated floor. |
 
 ---
 
