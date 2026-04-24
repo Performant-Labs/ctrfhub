@@ -61,11 +61,73 @@ Run this checklist on every `/audit-tests` invocation:
 
 ## Outputs produced
 
-A structured drift report with sections:
-1. **Findings** — each violation with file:line, rule citation, and remediation.
-2. **Coverage gaps** — missing test files or functions without unit tests.
-3. **Planning conformance** — pass/fail for each planning-doc acceptance criterion.
-4. **Verdict** — `PASS` (zero findings) or `BLOCK` (one or more findings). A `BLOCK` verdict prevents story merge and requires remediation by the Feature-implementer or Test-writer before re-audit.
+A single audit report at `.argos/<taskId>/spec-audit.md` (gitignored — never commit). Use the template below verbatim.
+
+## Spec-audit template
+
+```markdown
+# Spec-enforcer Audit — <taskId>
+
+**Executed:** <YYYY-MM-DD HH:MM>
+**Scope:** diff `main..story/<taskId>`
+**Checklists run:** <list the sections of the Audit Checklist that applied to this diff — e.g. "Architecture rules, Coverage, Planning docs conformance, Skills violations (htmx-4, mikroorm-dual-dialect)">
+
+## Findings
+
+Each finding: file:line, rule violated (cite the specific skill or planning doc section), exact remediation, severity.
+
+| # | File:Line | Rule (cite source) | Remediation | Severity |
+|---|---|---|---|---|
+| 1 | `src/routes/dashboard.ts:42` | `skills/htmx-4-forward-compat.md §hx-target on requesting element` | Move `hx-target="#stat-tiles"` onto the requesting element; do not inherit from a parent | **BLOCKING** |
+| 2 | `src/modules/ingest/route.ts:118` | — | Minor: extract magic number `500` to a named constant | NIT |
+
+**If no findings: "No drift detected against `skills/` or `docs/planning/*`."**
+
+## Coverage gaps
+
+| # | What's missing | Required by | Severity |
+|---|---|---|---|
+| 1 | No integration test for the 429 response on `POST /api/v1/projects/:slug/runs` | Story acceptance criteria ("rate limit 429") + declared integration tier | **BLOCKING** |
+
+**If no coverage gaps: "Coverage matches the story's declared Test tiers required and Page verification tiers."**
+
+## Planning-doc conformance (only lines relevant to this story's scope)
+
+Tick each line that applies, leave unticked lines out entirely (don't include checklist items irrelevant to this story).
+
+- [x] Ingest endpoint uses `x-api-token` header (not `Authorization: Bearer`) — `skills/ctrf-ingest-validation.md`
+- [x] Migrations generated for both PG and SQLite after entity change — `skills/mikroorm-dual-dialect.md`
+- [x] Bulk inserts use 500-row chunked pattern with `setImmediate` yield — `skills/ctrf-ingest-validation.md`
+- …
+
+## Forbidden-pattern scan (from CLAUDE.md)
+
+Scan the diff for each forbidden pattern; note explicitly if none were found.
+
+- [x] No `hx-target`/`hx-swap` inherited from a parent
+- [x] No raw HTMX event names outside `src/client/htmx-events.ts`
+- [x] No `hx-disable` anywhere in templates
+- [x] No Alpine `x-data` inside an HTMX swap target (or vice versa)
+- [x] No Postgres-only SQL / dialect-specific features without a SQLite equivalent
+- [x] No DB mocked in integration tests
+- [x] No T3 visual assertions without corresponding T2 ARIA assertions
+- [x] No layout-token change without a T2 backdrop-contrast re-check
+- [x] No raw CSRF-token or session-cookie handling outside Better Auth
+- [x] No Zod schema defined ad-hoc in a handler
+
+## Verdict
+
+**PASS** — story may proceed to Argos Phase 7 close-out and PR open.
+
+OR
+
+**BLOCK** — remediation required. The specific findings that must be resolved before the next audit:
+
+- <pointer to Findings row #N>
+- <pointer to Coverage-gap row #N>
+
+If BLOCK: return the story to the Feature-implementer per `implementstory.md` Phase 1; once remediated, the full tier pipeline (T1 → T2 → tests → T3) re-runs from Phase 2.
+```
 
 ## Operating context
 

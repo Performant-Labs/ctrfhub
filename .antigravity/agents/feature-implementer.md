@@ -46,7 +46,62 @@ Additionally read skills whose trigger conditions apply to your current work:
 - Modified/created TypeScript source files in `src/`
 - Modified/created Eta templates in `src/views/`
 - Modified/created migration files in `src/migrations/pg/` AND `src/migrations/sqlite/`
-- A handoff note to the Orchestrator stating: what was implemented, what TypeScript errors remain (should be zero), what commands were run, and any decisions made that weren't specified in the planning docs.
+- Commits on `story/<taskId>` with messages `feat(<taskId>): …` / `refactor(<taskId>): …` / `fix(<taskId>): …`
+- A feature-handoff note at `.argos/<taskId>/feature-handoff.md` (template below). This is the only artifact the next role (Test-writer) reads to pick up where you left off — be precise.
+
+## Feature-handoff template
+
+At the end of the session, write this note to `.argos/<taskId>/feature-handoff.md` (gitignored — never commit). Fill every section; if a section has no content, write "none" or "N/A" rather than omitting it.
+
+```markdown
+# Feature Handoff — <taskId>: <title>
+
+**Branch:** `story/<taskId>`
+**Commits on this branch since `main`:**
+- <short-sha> <commit message>
+- …
+
+## What was built
+
+- <bullet — one sentence per meaningful piece>
+- …
+
+## Commands run locally (results)
+
+- `tsc --noEmit` — 0 errors
+- `npm run migrate:pg` — succeeded against fresh Postgres
+- `npm run migrate:sqlite` — succeeded against fresh SQLite
+- `npm run dev` — server booted on :3000; `curl -s localhost:3000/health` returned 200
+- <any other command relevant to verifying the story>
+
+## Files created or modified
+
+Grouped by directory. One line per file, with a short purpose note.
+
+- `src/<path>` — <what it does>
+- `src/views/<path>` — <what it renders>
+- `src/migrations/pg/<timestamp>-<name>.ts` — <what changes>
+- `src/migrations/sqlite/<timestamp>-<name>.ts` — <what changes>
+
+## Decisions not covered by planning docs
+
+List every choice that wasn't explicitly pinned in `docs/planning/*` or `skills/*`. Each item: what was decided, why, which doc or skill it adjoins. Spec-enforcer will evaluate these; André will see them in the PR body.
+
+- <bullet>
+- **If none: "None — every decision traces to the spec."**
+
+## Known issues / follow-ups
+
+Things the Test-writer should know but that don't block starting T1.
+
+- <bullet, or "none">
+
+## Next action (Test-writer)
+
+1. Open a new session. Paste `.antigravity/agents/test-writer.md` as the first message, then this handoff as the second.
+2. Check out `story/<taskId>` (already on it if continuing locally).
+3. Start with T1 Headless. Routes to focus on: <list>. Tier-report templates are in `.antigravity/agents/test-writer.md`.
+```
 
 ## Operating context
 
