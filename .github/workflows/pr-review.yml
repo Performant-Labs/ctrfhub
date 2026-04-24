@@ -44,10 +44,10 @@ jobs:
         if: ${{ !contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
         uses: qodo-ai/pr-agent@main
         env:
-          # PR-Agent uses OPENAI_KEY (not OPENAI_API_KEY) + dot-notation api_base.
-          # See: https://qodo-merge-docs.qodo.ai/usage-guide/changing_a_model/#openrouter
-          OPENAI_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENAI.api_base: "https://openrouter.ai/api/v1"
+          # OPENROUTER__KEY (double underscore) maps to OPENROUTER.KEY in PR-Agent's Dynaconf
+          # settings, which is the only path that correctly wires litellm.api_key before the call.
+          # Using OPENROUTER_API_KEY alone sends DUMMY_LITELLM_API_KEY as the Bearer token.
+          OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: PR-Agent review — high-stakes (Opus 4.6)
@@ -55,8 +55,7 @@ jobs:
         if: ${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
         uses: qodo-ai/pr-agent@main
         env:
-          OPENAI_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENAI.api_base: "https://openrouter.ai/api/v1"
+          OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONFIG.MODEL: "openrouter/anthropic/claude-opus-4.6"
           CONFIG.FALLBACK_MODELS: '["openrouter/moonshotai/kimi-k2-thinking"]'
