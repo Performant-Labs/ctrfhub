@@ -141,3 +141,6 @@ vite.config.ts.timestamp-*
 # macOS
 .DS_Store
 **/.DS_Store
+
+# Claude bridge spool — per-protocol (see docs/ai_guidance/agent/claude-bridge.md)
+.claude-bridge/
