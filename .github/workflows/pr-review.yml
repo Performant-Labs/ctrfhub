@@ -2,10 +2,12 @@ name: PR-Agent Spec Review
 
 on:
   pull_request:
-    # synchronize (new commits) is intentionally omitted — PR-Agent's action runner
-    # skips it internally. Reviews fire on open/reopen. For subsequent commits,
-    # comment `/review` on the PR to trigger an on-demand review.
-    types: [opened, reopened, ready_for_review]
+    # synchronize re-runs the review on every push to an open PR. Combined
+    # with `concurrency.cancel-in-progress: true` below, rapid sequential
+    # pushes cancel earlier runs before they bill. `persistent_comment = true`
+    # in .pr_agent.toml means the review comment is updated in place rather
+    # than duplicated on every run.
+    types: [opened, reopened, ready_for_review, synchronize]
   issue_comment:
     types: [created]   # enables /review, /describe, /improve slash commands
 
@@ -80,11 +82,14 @@ jobs:
             MODEL="openrouter/moonshotai/kimi-k2-thinking"
           fi
 
-          START="${{ github.event.pull_request.updated_at || github.event.comment.created_at }}"
-          NOW=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          # Team-local timezone (auto-switches PDT↔PST) plus UTC for
+          # unambiguous machine-readable timestamps. Matches the format used
+          # by the local Argos review footer in pr-review.sh.
+          NOW_TEAM=$(TZ=America/Los_Angeles date '+%Y-%m-%d %H:%M %Z')
+          NOW_UTC=$(date -u '+%Y-%m-%d %H:%M UTC')
 
           gh pr comment "$PR_NUM" --repo "${{ github.repository }}" \
-            --body "> **Reviewer:** PR-Agent · **Model:** \`${MODEL}\` · **Completed:** ${NOW}"
+            --body "> 🤖 **Reviewer:** PR-Agent · **Model:** \`${MODEL}\` · **Completed:** ${NOW_TEAM} · ${NOW_UTC}"
 
 
 # Argos local review (claude -p) is intentionally NOT automated in CI.
