@@ -5,10 +5,12 @@
 # the result back to GitHub as a review comment.
 #
 # Usage:
-#   .antigravity/scripts/pr-review.sh <PR-number> [--post]
+#   .antigravity/scripts/pr-review.sh <PR-number> [--post] [--model <model>]
 #
-#   --post   Post the review output as a GitHub PR comment via `gh pr review`.
-#            Omit to just print the review to stdout.
+#   --post            Post the review output as a GitHub PR comment via `gh pr review`.
+#                     Omit to just print the review to stdout.
+#   --model <model>   Claude model to use (default: $ARGOS_MODEL or claude-sonnet-4-6).
+#                     Examples: claude-sonnet-4-6, claude-opus-4-6
 #
 # Prerequisites:
 #   - `claude` CLI installed and authenticated (Claude Code on this machine)
@@ -22,15 +24,21 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 PR_NUMBER="${1:-}"
 POST_TO_GH=false
+MODEL="${ARGOS_MODEL:-claude-sonnet-4-6}"
 
 if [[ -z "$PR_NUMBER" ]]; then
-  echo "Usage: $0 <PR-number> [--post]" >&2
+  echo "Usage: $0 <PR-number> [--post] [--model <model>]" >&2
   exit 1
 fi
 
-if [[ "${2:-}" == "--post" ]]; then
-  POST_TO_GH=true
-fi
+shift
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --post)  POST_TO_GH=true; shift ;;
+    --model) MODEL="${2:-}"; shift 2 ;;
+    *)       echo "Unknown flag: $1" >&2; exit 1 ;;
+  esac
+done
 
 if [[ ! -f "CLAUDE.md" ]]; then
   echo "Error: run this script from the repo root (CLAUDE.md not found in cwd)" >&2
@@ -123,17 +131,15 @@ ${PR_META}
 ${PR_DIFF}
 ENDOFPROMPT
 
-echo "→ Running Spec-enforcer review via claude -p..." >&2
+echo "→ Running Spec-enforcer review via claude -p --model ${MODEL}..." >&2
 # --dangerously-skip-permissions: required in non-interactive CI context so claude
 # can read skills/, docs/, etc. without prompting for approval.
-# Prompt passed as argument (more reliable than stdin in runner environments).
 PROMPT_CONTENT=$(cat "$PROMPT_FILE")
 
-# Capture model version and wall-clock time
-CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
+# Capture wall-clock time
 START_TIME=$(date +%s)
 
-REVIEW=$(claude -p --dangerously-skip-permissions "$PROMPT_CONTENT") || {
+REVIEW=$(claude -p --model "$MODEL" --dangerously-skip-permissions "$PROMPT_CONTENT") || {
   echo "Error: claude -p exited with code $?" >&2
   echo "Check: ANTHROPIC_API_KEY set? claude auth status?" >&2
   exit 1
@@ -146,7 +152,7 @@ ELAPSED=$(( END_TIME - START_TIME ))
 REVIEW="${REVIEW}
 
 ---
-> **Reviewer:** Argos (Claude Code — ${CLAUDE_VERSION}) · **Elapsed:** ${ELAPSED}s · **Triggered:** $(date -u '+%Y-%m-%d %H:%M UTC')"
+> **Reviewer:** Argos · **Model:** ${MODEL} · **Elapsed:** ${ELAPSED}s · **Triggered:** $(date -u '+%Y-%m-%d %H:%M UTC')"
 
 echo ""
 echo "════════════════════════════════════════"
