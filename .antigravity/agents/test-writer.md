@@ -64,13 +64,159 @@ This is the **mandatory escalation path** for all UI-touching stories. Never jum
 
 ## Outputs produced
 
-- New test files in `src/__tests__/unit/`, `src/__tests__/integration/`, `e2e/tests/`
-- A verification report with:
-  - Tier 1 status (pass / fail with output)
-  - Tier 2 status (pass / fail with ARIA snapshot)
-  - Tier 3 status (pass / fail with embedded screenshot path)
-  - Coverage delta (`npm run test:coverage` output)
-  - Any test that is failing: exact test name, error, and reproduction steps
+- New test files in `src/__tests__/unit/`, `src/__tests__/integration/`, `e2e/tests/`, committed to `story/<taskId>` with messages `test(<taskId>): …`.
+- Three tier-report files in `.argos/<taskId>/` (gitignored — never commit). Templates below.
+- A test-handoff note at `.argos/<taskId>/test-handoff.md` (template below).
+
+## Tier 1 report template
+
+Write to `.argos/<taskId>/tier-1-report.md`. Run T1 **first**; do not touch T2 until T1 is green.
+
+```markdown
+# Tier 1 Headless Report — <taskId>
+
+**Executed:** <YYYY-MM-DD HH:MM>
+**Method:** `fastify.inject()` / `curl` / `cheerio` (no browser)
+
+## Checks
+
+| # | What is being verified | Command | Expected | Actual | Status |
+|---|---|---|---|---|---|
+| 1 | `<route>` returns 201 on valid payload | `app.inject({ method: 'POST', url: '/…', payload: … })` | 201 + `{ runId: ... }` | <observed> | ✓ / ✗ |
+| 2 | `<route>` returns 401 when auth missing | `app.inject({ method: 'POST', url: '/…' })` (no token) | 401 | <observed> | ✓ / ✗ |
+| 3 | HTMX partial vs full-page branching | Two injects: one with `HX-Request: true`, one without | Partial has no `<html>`; full page does | <observed> | ✓ / ✗ |
+| … | … | … | … | … | … |
+
+## Excerpt of raw output
+
+```
+<paste any failure output or the interesting part of success output>
+```
+
+## Verdict
+
+**PASS** — proceed to Tier 2.
+**FAIL** — halt. Re-open a Feature-implementer session with the failing checks and remediation guidance.
+```
+
+## Tier 2 report template
+
+Write to `.argos/<taskId>/tier-2-report.md`. Run T2 **only** after T1 is green.
+
+```markdown
+# Tier 2 ARIA Structural Report — <taskId>
+
+**Executed:** <YYYY-MM-DD HH:MM>
+**Route(s) under test:** `<path>`
+**Viewport:** 1280×800 (desktop baseline)
+**Tool:** `read_browser_page` / Playwright `accessibility.snapshot()`
+
+## Structural assertions
+
+| # | Assertion | Expected | Observed | Status |
+|---|---|---|---|---|
+| 1 | `h1` present with correct title | "<expected text>" | <observed> | ✓ / ✗ |
+| 2 | Required landmarks | `main`, `navigation` | <observed list> | ✓ / ✗ |
+| 3 | Interactive elements labeled | every button has an accessible name | <list any missing> | ✓ / ✗ |
+| 4 | No duplicate landmark roles | — | <observed> | ✓ / ✗ |
+| … | … | … | … | … |
+
+## Backdrop-contrast WCAG re-check (blocking gate — run if any of these is true in the diff)
+
+Triggers: layout-token change affecting vertical position, `position`/`z-index` change, `[data-theme]` zone move, background swap, any `@layer components` surface change.
+
+| Foreground selector | Backdrop selector | Ratio | WCAG AA target | Status |
+|---|---|---|---|---|
+| `<css selector>` | `<css selector>` | <computed> | ≥ 4.5 body / ≥ 3.0 large | ✓ / ✗ |
+
+**If any trigger applies and ratio < target: halt T3; return story to Feature-implementer with the numeric ratio and remediation.**
+
+## ARIA snapshot excerpt
+
+```
+<paste the relevant part of the accessibility tree>
+```
+
+## Verdict
+
+**PASS** — proceed to Tier 3 for UI stories; otherwise to test-authoring.
+**FAIL** — halt. Remediation back to Feature-implementer.
+```
+
+## Tier 3 report template
+
+Write to `.argos/<taskId>/tier-3-report.md`. Only for UI stories, and only after T1 + T2 are green (and backdrop-contrast ✓ if triggered).
+
+```markdown
+# Tier 3 Visual Report — <taskId>
+
+**Executed:** <YYYY-MM-DD HH:MM>
+**Viewports:** 1280×800 (primary) + 375×800 (narrow-smoke: no-horizontal-scroll check only)
+**Pre-conditions confirmed:** T1 ✓, T2 ✓, backdrop-contrast ✓ (or N/A)
+**Tool:** `browser_subagent` — one call per design slice, never full-page composites.
+
+## Screenshot inventory
+
+| # | Slice | Viewport | File | Notes |
+|---|---|---|---|---|
+| 1 | <component/region> | 1280×800 | `.argos/<taskId>/screenshots/<slug>-1280.png` | <observation> |
+| 2 | <component/region> | 1280×800 | `.argos/<taskId>/screenshots/<slug>-1280.png` | <observation> |
+| 3 | Narrow smoke | 375×800 | `.argos/<taskId>/screenshots/narrow-smoke-375.png` | No horizontal scroll observed |
+
+## Findings
+
+- <any visual issue found; if none: "None — visuals match expectations for a dark-surface Flowbite layout.">
+
+## Verdict
+
+**PASS** — proceed to test-authoring / test-handoff.
+**FAIL** — halt. Remediation back to Feature-implementer.
+```
+
+## Test-handoff template
+
+Write to `.argos/<taskId>/test-handoff.md` after all tiers pass and all tests are authored and green.
+
+```markdown
+# Test Handoff — <taskId>
+
+**Branch:** `story/<taskId>`
+**Commits added by Test-writer:**
+- <short-sha> <commit message>
+- …
+
+## Tier summary
+
+| Tier | Status | Report |
+|---|---|---|
+| T1 Headless | ✓ | `.argos/<taskId>/tier-1-report.md` |
+| T2 ARIA | ✓ | `.argos/<taskId>/tier-2-report.md` |
+| T3 Visual | ✓ or N/A (non-UI story) | `.argos/<taskId>/tier-3-report.md` |
+| Backdrop-contrast | ✓ or N/A | inline in T2 report |
+
+## Tests added
+
+| Layer | Files | Tests | Notes |
+|---|---|---|---|
+| Unit | `src/__tests__/unit/<file>.test.ts` | <count> | — |
+| Integration | `src/__tests__/integration/<file>.test.ts` | <count> | covers <named error paths> |
+| E2E | `e2e/tests/<file>.spec.ts` | <count> | happy path |
+
+## Coverage (from `npm run test:coverage`)
+
+Lines: <pct>% · Functions: <pct>% · Branches: <pct>%
+Thresholds: lines ≥ 80, functions ≥ 80, branches ≥ 75. <PASS/FAIL>
+
+## Non-blocking issues (if any)
+
+- <bullet, or "none">
+
+## Next action (Spec-enforcer)
+
+1. Open a new session. Paste `.antigravity/agents/spec-enforcer.md` as the first message, then this handoff as the second.
+2. Check out `story/<taskId>`.
+3. Run the Audit Checklist and write the verdict to `.argos/<taskId>/spec-audit.md` (template in `.antigravity/agents/spec-enforcer.md`).
+```
 
 ## Operating context
 

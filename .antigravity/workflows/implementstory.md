@@ -26,21 +26,61 @@ Before starting, the Orchestrator MUST verify:
 
 ## Phase 1 — Task Assignment
 
-### Orchestrator produces a Task Brief for the Feature-implementer:
+### 1.1 Argos cuts the story branch
 
-```
-Task ID: <taskId>
-Description: <from tasks.md>
-Acceptance criteria: <exact lines from product.md or architecture.md>
-Required skills:
-  - skills/<required-skill-1>.md
-  - skills/<required-skill-2>.md
-  (list all skills whose trigger conditions apply)
-Dependencies already built: <list completed dependency task IDs>
-Known gaps that affect this task: <from gaps.md, or "none">
+Before writing the Brief, Argos:
+
+1. Confirms preconditions (above).
+2. Cuts `story/<taskId>` from current `main`.
+3. Flips the task row in `docs/planning/tasks.md` from `[ ]` to `[/]`; commits on the story branch with message `chore(<taskId>): assign`.
+
+### 1.2 Argos writes the Task Brief
+
+Write to `.argos/<taskId>/brief.md` (gitignored — never commit it). Use this template verbatim, filling the angle-bracket placeholders from `docs/planning/tasks.md` and `docs/planning/gaps.md`:
+
+```markdown
+# Task Brief — <taskId>: <title>
+
+## Preconditions (verified by Argos)
+
+- [x] Dependencies satisfied: <list of task IDs with [x], or "none">
+- [x] No P0 gap blocks this story: <G-P0-XXX status each, or "none affecting this task">
+- [x] Branch cut: `story/<taskId>` from `main` @ <short-sha>
+- [x] `tasks.md` flipped `[ ]` → `[/]` on the story branch (commit `chore(<taskId>): assign`)
+
+## Story
+
+**Description.** <verbatim "###" line from `docs/planning/tasks.md`>
+
+**Acceptance criteria.** <verbatim "Acceptance:" from `tasks.md`, broken into bullets for scannability>
+
+**Test tiers required.** <verbatim `Test tiers required:` from `tasks.md`>
+
+**Page verification tiers.** <verbatim `Page verification tiers:` from `tasks.md`, or "none (no rendered routes)">
+
+**Critical test paths.** <verbatim `Critical test paths:` from `tasks.md`>
+
+## Required reading
+
+**Skills (full paths).**
+- `skills/<name>.md` — <one-line why this skill applies here>
+- …
+
+**Planning doc sections.**
+- `docs/planning/<file>.md §<section>` — <one-line why this section applies>
+- …
+
+## Next action (Feature-implementer)
+
+1. Open a new session. Paste `.antigravity/agents/feature-implementer.md` as the first message, then this Brief as the second.
+2. Check out `story/<taskId>` (already cut).
+3. Read the Skills + Planning sections above.
+4. Implement. Commits on `story/<taskId>` with messages `feat(<taskId>): …` / `refactor(<taskId>): …` / `fix(<taskId>): …`.
+5. Write the feature-handoff to `.argos/<taskId>/feature-handoff.md` (template in `.antigravity/agents/feature-implementer.md`).
+6. Return control to André so he can open the Test-writer session.
 ```
 
-### Feature-implementer:
+### 1.3 Feature-implementer (summary — full process in the agent file)
 
 1. Reads all required skills listed in the brief.
 2. Reads the relevant planning doc sections.
@@ -131,17 +171,88 @@ The Orchestrator commissions a spot-audit of the story's diff:
 
 ---
 
-## Phase 7 — Story Completion
+## Phase 7 — Story Close-out
 
 **Executed by: Orchestrator**
 
-1. Update `tasks.md`: mark `<taskId>` as `[x]`.
-2. Record in the handoff note:
-   - Task ID and description.
-   - Phases completed (T1 ✓, T2 ✓, T3 ✓ or N/A, Spec-enforcer ✓).
-   - Test counts (unit, integration, E2E added).
-   - Any decisions that deviate from the spec (forward to human reviewer).
-3. Identify the next task(s) whose dependencies are now satisfied.
+This runs **between Spec-enforcer PASS and the PR opening**, so the status flip ships with the PR:
+
+1. Check out `story/<taskId>` locally.
+2. Read `.argos/<taskId>/spec-audit.md` — verify **PASS**. If BLOCK, return the story to the Feature-implementer per the escalation table below; do NOT proceed.
+3. Flip the task row in `docs/planning/tasks.md` from `[/]` to `[x]`. Commit on the story branch with message `chore(<taskId>): complete`. This is the last commit on the branch before the PR opens.
+4. Generate the PR body at `.argos/<taskId>/pr-body.md` (template below).
+5. Return a summary to André:
+   - Phases completed (T1 ✓, T2 ✓, T3 ✓ / N/A, Spec-enforcer PASS).
+   - Test counts (unit / integration / E2E added).
+   - Decisions deviating from spec (surfaced for André's final review).
+   - Next assignable stories (tasks whose dependencies are now satisfied).
+
+André then opens the PR with `gh pr create --base main --head story/<taskId> --title "[<taskId>] <summary>" --body-file .argos/<taskId>/pr-body.md`. PR-Agent picks up the review automatically.
+
+---
+
+## Phase 8 — PR body template
+
+**Written by: Orchestrator at Phase 7.4. Consumed by: André at PR open. Also consumed by: PR-Agent for review context.**
+
+Write to `.argos/<taskId>/pr-body.md`. Fill from the handoff notes produced in Phases 2-6.
+
+```markdown
+# [<taskId>] <title>
+
+## Summary
+
+<1–3 sentences describing what this PR ships and why>
+
+## Acceptance criteria
+
+Verbatim from `docs/planning/tasks.md` → `<taskId>` → `Acceptance:`. Check every box. If any box is unchecked, this PR is not ready.
+
+- [x] <criterion 1>
+- [x] <criterion 2>
+- [x] …
+
+## Test tiers
+
+| Layer | Declared in tasks.md | Present in diff | Notes |
+|---|---|---|---|
+| Unit | <yes/no> | ✓ | <count> tests in `src/__tests__/unit/*` |
+| Integration | <yes/no> | ✓ | <count> tests in `src/__tests__/integration/*` |
+| E2E | <yes/no> | ✓ / N/A | <count> specs in `e2e/tests/*` |
+
+## Page verification tiers
+
+| Tier | Declared | Result | Report location (story branch) |
+|---|---|---|---|
+| T1 Headless | <from tasks.md> | ✓ | `.argos/<taskId>/tier-1-report.md` |
+| T2 ARIA | <from tasks.md> | ✓ | `.argos/<taskId>/tier-2-report.md` |
+| T3 Visual | <from tasks.md, or N/A> | ✓ / N/A | `.argos/<taskId>/tier-3-report.md` |
+
+## Decisions that deviate from spec
+
+List every choice not directly pinned down by `docs/planning/*` or `skills/*`. Spec-enforcer has already evaluated these; they are surfaced here so André can independently decide.
+
+- <bullet describing the decision, the file it lives in, and why>
+- **If none: "None — every decision is pinned to the spec."**
+
+## Gaps filed during this story
+
+- <G-ID — one-line summary — severity>
+- **If none: "none"**
+
+## Spec-enforcer verdict
+
+**PASS** — see `.argos/<taskId>/spec-audit.md`
+**Date:** <YYYY-MM-DD>
+
+## Next assignable stories (after this merges)
+
+- `<taskId>` — <title>
+- …
+
+---
+_Generated from `.argos/<taskId>/pr-body.md`. If you edit the PR description directly on GitHub, the `.argos/` source will not reflect those edits._
+```
 
 ---
 
