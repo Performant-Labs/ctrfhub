@@ -8,7 +8,7 @@ cost time.
 Read this before starting any new run. Add to it when something unexpected happens.
 
 > [!IMPORTANT]
-> **Before verifying any page or component**: Read [`verification-cookbook.md`](verification-cookbook.md). It defines the Three-Tier Hierarchy (Headless → ARIA → Visual) that must govern all verification. Do NOT call `browser_subagent` (screenshots) until a Tier 2 ARIA audit passes.
+> **Before verifying any page or component**: Read [`verification-cookbook.md`](../../../testing/verification-cookbook.md). It defines the Three-Tier Hierarchy (Headless → ARIA → Visual) that must govern all verification. Do NOT call `browser_subagent` (screenshots) until a Tier 2 ARIA audit passes.
 
 ---
 
@@ -36,7 +36,7 @@ it looks wrong), hover states, mobile menu appearance, and animation behaviour.
 
 ## 1.1 The Verification Hierarchy (Tiered Methodology)
 
-To maximize developer velocity, follow the **Three-Tier Verification Hierarchy**. For specialized technical patterns (Headless, ARIA-Structural, and Visual), refer to the authoritative [**Verification Cookbook**](verification-cookbook.md).
+To maximize developer velocity, follow the **Three-Tier Verification Hierarchy**. For specialized technical patterns (Headless, ARIA-Structural, and Visual), refer to the authoritative [**Verification Cookbook**](../../../testing/verification-cookbook.md).
 
 **Key Principles:**
 - **Tier 2 (ARIA) First**: Audit the "Structural Skeleton" of a page (roles, headings, buttons) before taking any screenshots. This is 20x faster and more token-efficient.

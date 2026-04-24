@@ -1,12 +1,15 @@
-# Visual Regression Strategy
+# Visual Regression Strategy — Drupal Theme Generation SOP
 
 This document defines **how AI agents must execute Visual Regression (VR) gates**
 embedded throughout the AI-Guided Theme Generation SOP. VR is no longer a single
 end-of-project step — it is a mandatory gate at the end of every structural phase.
 **You cannot build upon problems you haven't caught.**
 
+> [!NOTE]
+> **This is the Drupal / Canvas-specific VR strategy.** Phase numbers (Phase 6, 8, 10, 12, 14, 16) map to `ai-guided-theme-generation.md`. For the tool-agnostic, stack-neutral version of these rules — gate structure, budget rules, anti-patterns — read [`../../../testing/visual-regression-strategy.md`](../../../testing/visual-regression-strategy.md) first. This document is a concrete application of those rules to the Drupal Canvas theming workflow.
+
 > [!IMPORTANT]
-> **This document covers Tier 3 (Visual) verification only.** Before beginning any VR gate in this document, a **Tier 2 ARIA structural audit** must have already passed for the relevant page. Read [`verification-cookbook.md`](verification-cookbook.md) for the full Three-Tier Hierarchy. Do NOT open a browser subagent (screenshots) until the structural skeleton is confirmed.
+> **This document covers Tier 3 (Visual) verification only.** Before beginning any VR gate in this document, a **Tier 2 ARIA structural audit** must have already passed for the relevant page. Read [`verification-cookbook.md`](../../../testing/verification-cookbook.md) for the full Three-Tier Hierarchy. Do NOT open a browser subagent (screenshots) until the structural skeleton is confirmed.
 
 > [!IMPORTANT]
 > VR gates are **blocking**. A phase must not begin until the previous phase's VR
