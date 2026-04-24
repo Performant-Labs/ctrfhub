@@ -9,16 +9,15 @@
 
 [config]
 # Model IDs verified against https://openrouter.ai/api/v1/models 2026-04-23
-# Kimi K2 Thinking: moonshotai/kimi-k2-thinking ✓
-# Opus 4.6 uses a DOT not a hyphen: claude-opus-4.6 ✓
-model = "openrouter/moonshotai/kimi-k2-thinking"
-fallback_models = ["openrouter/anthropic/claude-opus-4.6"]
+# Auth: OPENAI_API_KEY=<openrouter_key> + OPENAI_API_BASE=https://openrouter.ai/api/v1
+# Model names use vendor/model format (no openrouter/ prefix needed with API base override).
+model = "moonshotai/kimi-k2-thinking"
+fallback_models = ["anthropic/claude-opus-4.6"]
 verbosity_level = 1
 # Don't truncate our skills/ context — reviews need the full spec context loaded
 max_description_tokens = 1500
 max_commits_tokens = 1500
 # Both models are newer than PR-Agent's internal MAX_TOKENS table — set explicitly.
-# kimi-k2-thinking: 131072 context; claude-opus-4.6: 200k. Use conservative 131072.
 custom_model_max_tokens = 131072
 
 [pr_reviewer]

@@ -44,8 +44,10 @@ jobs:
         if: ${{ !contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
         uses: qodo-ai/pr-agent@main
         env:
-          # LiteLLM recognizes `openrouter/<vendor>/<model>` prefix and uses OPENROUTER_API_KEY directly.
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # OpenAI-compatible mode: route to OpenRouter by overriding the base URL.
+          # LiteLLM uses OPENAI_API_KEY + OPENAI_API_BASE regardless of model vendor.
+          OPENAI_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_BASE: "https://openrouter.ai/api/v1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: PR-Agent review — high-stakes (Opus 4.6)
@@ -53,10 +55,11 @@ jobs:
         if: ${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
         uses: qodo-ai/pr-agent@main
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_BASE: "https://openrouter.ai/api/v1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CONFIG.MODEL: "openrouter/anthropic/claude-opus-4-6"
-          CONFIG.FALLBACK_MODELS: '["openrouter/moonshotai/kimi-k2-thinking"]'
+          CONFIG.MODEL: "anthropic/claude-opus-4.6"
+          CONFIG.FALLBACK_MODELS: '["moonshotai/kimi-k2-thinking"]'
 
 # Argos local review (claude -p) is intentionally NOT automated in CI.
 #
