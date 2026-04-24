@@ -11,8 +11,8 @@
 # Model IDs verified against https://openrouter.ai/api/v1/models 2026-04-23
 # Auth: OPENAI_API_KEY=<openrouter_key> + OPENAI_API_BASE=https://openrouter.ai/api/v1
 # Model names use vendor/model format (no openrouter/ prefix needed with API base override).
-model = "moonshotai/kimi-k2-thinking"
-fallback_models = ["anthropic/claude-opus-4.6"]
+model = "openrouter/moonshotai/kimi-k2-thinking"
+fallback_models = ["openrouter/anthropic/claude-opus-4.6"]
 verbosity_level = 1
 # Don't truncate our skills/ context — reviews need the full spec context loaded
 max_description_tokens = 1500
