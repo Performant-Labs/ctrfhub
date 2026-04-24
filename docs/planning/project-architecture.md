@@ -236,7 +236,7 @@ Track the build of this system here. Each row is an atomic piece of the architec
 | 15 | Test-handoff template | B | ✅ | `test-writer.md` §Test-handoff template | Tier summary, tests added, coverage, next-action |
 | 16 | Spec-audit template | B | ✅ | `spec-enforcer.md` §Spec-audit template | Findings / Coverage / Conformance / Forbidden-pattern / Verdict |
 | 17 | PR body template (`.argos/<taskId>/pr-body.md`) | B | ✅ | `implementstory.md` §Phase 8 | Acceptance checkboxes, tier results, deviations, gaps, next-stories |
-| 18 | GitHub PR template | B | ⬜ | `.github/pull_request_template.md` | Pre-fills the PR body from the template above |
+| 18 | GitHub PR template | B | ✅ | `.github/pull_request_template.md` | Structurally aligned with the Phase 8 template; overridden by `--body-file` when Argos opens the PR |
 | 19 | `high-stakes` GitHub label | B | ⬜ | GitHub repo Settings | `gh label create high-stakes --color B60205` |
 | 20 | Branch protection on `main` | B | ⬜ | GitHub repo Settings | Require PR-Agent green + André approval + resolved conversations |
 | 21 | PR-Agent cloud review | B | ✅ | `.github/workflows/pr-review.yml` | Confirmed working |
