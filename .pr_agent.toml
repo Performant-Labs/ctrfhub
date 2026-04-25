@@ -67,6 +67,11 @@ OUTPUT SHAPE:
 - Inline comments should focus on the exact lines that violate a cited rule.
 """
 
+# [pr_code_suggestions] is no longer auto-triggered (see [github_action_config]
+# below — auto_improve = "false"). The section is retained to configure manual
+# `/improve` invocations from PR comments. Default review now runs only the
+# spec-enforcer pass, which already produces inline citation-backed comments —
+# saving one full Kimi round-trip per PR.
 [pr_code_suggestions]
 num_code_suggestions = 4
 summarize = true
@@ -90,6 +95,18 @@ publish_inline_comments = true
 publish_output = true
 publish_output_progress = false
 
+[github_action_config]
+# auto_review (= true by default) keeps the spec-enforcer pass firing on every
+# opened/synchronize event. We turn auto_improve OFF: it was a second full
+# model round-trip producing /improve-style suggestions that overlapped with
+# the reviewer's inline comments, contributing meaningfully to the wall-time
+# pressure that timed out PR #7's review at 15 min. Manual `/improve` from a
+# PR comment still works for the rare case it adds value.
+# auto_describe (= true by default) is left as-is — its run is short and its
+# output (spec-aware PR description rewrite) is genuinely useful.
+auto_review = true
+auto_improve = false
+
 [litellm]
 # Let LiteLLM retry on transient failures before falling back
 drop_params = true
@@ -101,9 +118,22 @@ max_model_len = 131072
 # model, which speeds up review and reduces token cost. Use sparingly — too
 # many excludes and a real bug can hide in a "boring" file.
 #
-# package-lock.json: an npm-generated lockfile. Multi-thousand-line diffs on
-# every dependency change push PR-Agent against the workflow's 15-minute
-# timeout (observed on PR #7's INFRA-001 review). The actual review value of
-# the lockfile is near-zero — `package.json` is what humans and PR-Agent
-# should care about.
-glob = ['package-lock.json']
+# Categories:
+#   * Generated lockfiles — regenerable from manifests; multi-thousand-line
+#     diffs on dependency changes drove PR #7 against the 15-min timeout. The
+#     manifests themselves (package.json, etc.) still get reviewed.
+#   * Build outputs — `dist/`, `coverage/` are pure artifacts, never authored.
+#   * Minified bundles — unreadable by the model and by humans.
+#   * Snapshot fixtures — Vitest/Jest auto-generated; the test that produced
+#     them is what gets reviewed.
+glob = [
+  'package-lock.json',
+  'yarn.lock',
+  'pnpm-lock.yaml',
+  'dist/**',
+  'coverage/**',
+  '*.min.js',
+  '*.min.css',
+  '__snapshots__/**',
+  '*.snap',
+]
