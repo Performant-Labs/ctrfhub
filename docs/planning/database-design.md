@@ -473,6 +473,22 @@ Per-project enable/disable override for each custom field definition. When `in_n
 
 ### 4.20 project_tokens
 
+> **DEPRECATED (2026-04-25, post-AUTH-001).** Better Auth's `apikey` table is the canonical token store; per-token policy (rate limits, permissions) lives in `apikey.metadata` (JSON). The schema below is preserved for historical context. New code MUST NOT migrate or read from `project_tokens` — see DD-012 (rate-limit `keyGenerator` reads `apikey.metadata.rateLimit?.perHour`) and DD-019 (`?on_duplicate=replace` checks `apikey.metadata.permissions?` for `'ingest:replace'`). SET-001 (project-settings token tab) reads/writes via Better Auth's API, not this table. The `project_slug_aliases` sub-table below remains canonical and unaffected.
+
+**Per-token policy schema (`apikey.metadata` JSON, MVP shape):**
+
+```typescript
+type ApiKeyMetadata = {
+  projectId: number;                  // required — scope check (set by setup wizard / token-create UI)
+  rateLimit?: { perHour: number };    // absent → default 120; perHour: 0 → unlimited
+  permissions?: string[];             // absent → empty; e.g. ['ingest:replace'] for DD-019 replace mode
+};
+```
+
+Defaults are applied in code, not in the DB. Better Auth's metadata column is JSON in SQLite and JSONB in Postgres.
+
+---
+
 Project-scoped ingest tokens used by CI pipelines to authenticate CTRF report submissions. Separate from personal API keys (which authenticate users). One project can have multiple tokens (e.g. one per CI environment).
 
 | Column | Type | Constraints | Notes |
@@ -1147,7 +1163,7 @@ This table is the **single canonical source** for every application-layer rate l
 | Password reset — per email | 3 req/hour | email (lowercased) | in-proc LRU | Prevents one user being flooded with reset emails (see DD-021). Enumeration-safe — see "Enumeration-safety rule" below |
 | Email verification — send | 3 req/hour + 10 req/min | user-id + IP | in-proc LRU | Same envelope as password reset (see DD-022) |
 | Project delete (`DELETE /projects/:slug`) | 5 req/hour | admin-user-id | in-proc LRU | Prevents a compromised credential or runaway admin-owned automation from scripting project deletion (see DD-023) |
-| CTRF ingest (`POST /runs`) | Default 120 req/hour; per-token override | project-token-id | `@fastify/rate-limit` default store | CI misconfiguration guard; configurable per token via `project_tokens.rate_limit_per_hour` (0 = unlimited). Idempotent replays (DD-019) count against this limit before the dedup lookup. See "keyGenerator for per-token limits" below |
+| CTRF ingest (`POST /api/v1/projects/:slug/runs`) | Default 120 req/hour; per-token override | apikey-id (Better Auth) | `@fastify/rate-limit` default store | CI misconfiguration guard; configurable per token via `apikey.metadata.rateLimit.perHour` (Better Auth metadata; absent → default 120; 0 → unlimited). Idempotent replays (DD-019) count against this limit before the dedup lookup. See "keyGenerator for per-token limits" below |
 | Settings `PATCH` | 60 req/min | session-user-id | `@fastify/rate-limit` default store | Auto-save debounce already reduces volume |
 | SSE `GET /api/sse/*` | 1 new connection per 2s | session-user-id | in-proc counter (DD-012 Layer 3) | Prevents rapid reconnect amplification — Layer 3 then enforces concurrent-connection caps |
 | Artifact serving `GET /api/files/*` | 300 req/min | session-user-id | `@fastify/rate-limit` default store | Local-disk storage only; S3 pre-signed URLs are single-use with 1h expiry and need no app-layer limit. See DD-014, DD-028 |
@@ -1191,23 +1207,26 @@ When a limit is keyed on attacker-controlled input (email, invite-email, usernam
 
 **`keyGenerator` pattern for per-token ingest.**
 
-The per-token ingest limit reads `project_tokens.rate_limit_per_hour` from the DB — the library needs a custom `keyGenerator` plus a custom `max`:
+The per-token ingest limit reads `apikey.metadata.rateLimit?.perHour` (Better Auth's apikey row, attached to the request by the auth middleware). The library needs a custom `keyGenerator` plus a custom `max`:
 
 ```typescript
 fastify.register(rateLimit, {
   keyGenerator: async (req) => {
-    const token = req.tokenRow;               // set by auth middleware earlier in the chain
-    req.rateContext = { limit: token.rateLimitPerHour, key: `token:${token.id}` };
+    const apiKey = req.apiKey;                                     // Better Auth apikey row, set by auth middleware
+    const limit = apiKey.metadata?.rateLimit?.perHour ?? 120;      // metadata is JSON; default 120/hr
+    req.rateContext = { limit, key: `apikey:${apiKey.id}` };
     return req.rateContext.key;
   },
-  max: (req) => req.rateContext?.limit ?? 120,  // falls back to default if unset
+  max: (req) => req.rateContext?.limit ?? 120,                     // falls back to default if unset
   timeWindow: '1 hour',
   // 0 = unlimited: short-circuit with a sentinel max
   skip: (req) => req.rateContext?.limit === 0,
 });
 ```
 
-Token row lookup happens once at route entry (the auth middleware already reads `project_tokens`), and the cached limit is attached to `req.rateContext`. The `skip` hook handles the `0 = unlimited` branch without emitting `RateLimit-*` headers that would imply a cap. Invalid tokens fail auth before this middleware runs; no rate-limit counter increments for them.
+Apikey row lookup happens during Better Auth's apikey-plugin verification at route entry; the row is attached to the request, and the cached limit is read from `metadata.rateLimit?.perHour` (no extra DB query). The `skip` hook handles the `0 = unlimited` branch without emitting `RateLimit-*` headers that would imply a cap. Invalid tokens fail auth before this middleware runs; no rate-limit counter increments for them.
+
+CTRF-002 ships with a simplified per-token bucket keyed on the `x-api-token` header value with a hardcoded 120/hr (no metadata lookup yet). Wiring `metadata.rateLimit?.perHour` is a small follow-up — see G-P1-008 in `gaps.md` and SET-001's eventual brief.
 
 **Observability.**
 
@@ -2040,7 +2059,7 @@ Reporters with no reliable source of a stable key should simply omit the header.
 Rare but real: a reporter uploaded a run with bad metadata, or forgot to attach artifacts, and wants to re-post over the same run. Supported via the query param:
 
 - `?on_duplicate=return_existing` (default): behaviour as described above.
-- `?on_duplicate=replace`: if the `Idempotency-Key` matches an existing run, delete the winner run (cascade) and persist the new one. Requires the token to have `ingest:replace` permission (a new bit on `project_tokens`, defaulting to off — admins opt specific tokens in). The deleted run's `id` is *not* reused — the new run gets a fresh autoincrement ID.
+- `?on_duplicate=replace`: if the `Idempotency-Key` matches an existing run, delete the winner run (cascade) and persist the new one. Requires the token to have `ingest:replace` permission (`apikey.metadata.permissions` array contains `'ingest:replace'`; absent → forbidden, returns `403`. Admins opt specific tokens in via the SET-001 token-management UI). The deleted run's `id` is *not* reused — the new run gets a fresh autoincrement ID.
 - `?on_duplicate=error`: if the key matches an existing run, return `409 Conflict` with `{"error": "duplicate_run", "existing_run_id": ...}`. Useful for strict CI pipelines that want to be told if they retried.
 
 Invalid values for `on_duplicate` → `400`.
@@ -2053,7 +2072,7 @@ To support this, the first-time ingest path writes the response body into `inges
 
 #### Rate limiting interaction
 
-Idempotent replays count against the per-token ingest limit **before** the dedup lookup runs — the reverse-proxy `limit_req` and the Fastify rate-limit middleware both precede the idempotency check in the request chain. A runaway reporter re-POSTing the same key a thousand times per minute is rejected at the rate-limit layer, never reaching the DB. This is deliberate: dedup is not a substitute for rate limiting. The canonical limit (default 120 req/hour per token, configurable via `project_tokens.rate_limit_per_hour`) lives in DD-012's Layer 2 table — see DD-029 for the consolidation rationale.
+Idempotent replays count against the per-token ingest limit **before** the dedup lookup runs — the reverse-proxy `limit_req` and the Fastify rate-limit middleware both precede the idempotency check in the request chain. A runaway reporter re-POSTing the same key a thousand times per minute is rejected at the rate-limit layer, never reaching the DB. This is deliberate: dedup is not a substitute for rate limiting. The canonical limit (default 120 req/hour per token, configurable via `apikey.metadata.rateLimit.perHour`) lives in DD-012's Layer 2 table — see DD-029 for the consolidation rationale.
 
 #### Observability
 
