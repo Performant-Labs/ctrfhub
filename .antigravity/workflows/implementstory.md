@@ -70,6 +70,8 @@ Write to `.argos/<taskId>/brief.md` (gitignored — never commit it). Use this t
 - `docs/planning/<file>.md §<section>` — <one-line why this section applies>
 - …
 
+**Org-wide context (optional deep-dive).** Each cited skill above has a `source:` frontmatter line pointing at Performant Labs's org-wide standards under `docs/ai_guidance/`. The symlink resolves on every workspace that has `~/Sites/ai_guidance` cloned (see `DEVELOPER_SETUP.md` "AntiGravity workspace readiness check" for setup). Skills inline the relevant rules — following the source is optional, useful when you want broader context or to verify a rule against the original. A broken `docs/ai_guidance/` symlink doesn't block feature work; PR-Agent in CI runs without it too.
+
 ## Next action (Feature-implementer)
 
 1. Open a new session. Paste `.antigravity/agents/feature-implementer.md` as the first message, then this Brief as the second.

@@ -51,6 +51,8 @@
 - `docs/planning/gaps.md §G-P2-004` — the `status: 'other'` gap that this story resolves. After CTRF-001 merges, that gap entry should be marked Resolved (Argos handles that in the close-out PR body, not in your branch).
 - The CTRF JSON Schema itself: <https://ctrf.io/schema/v1.0.0/ctrf.schema.json> (or the version we pin). This is the upstream spec; the Zod schema is your TypeScript-flavored mirror of it.
 
+**Org-wide context (optional deep-dive).** Each cited skill above has a `source:` frontmatter line pointing at Performant Labs's org-wide standards under `docs/ai_guidance/`. The symlink resolves on workspaces with `~/Sites/ai_guidance` cloned (Daedalus has it; Talos as of 2026-04-25 — see `DEVELOPER_SETUP.md` "AntiGravity workspace readiness check" for setup). Skills inline the relevant rules — following the source is for broader context or rule verification, not required to do the work.
+
 ## Files in scope
 
 - `src/modules/ingest/schemas.ts` — new (`CtrfReportSchema` + derived type export)
