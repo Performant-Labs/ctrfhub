@@ -64,7 +64,7 @@ Status key:
 **Page verification tiers:** T1 Headless (401 shapes, `HX-Redirect` response header, `/setup` redirect on empty DB)
 **Critical test paths:** valid session cookie passes; valid `ctrf_*` Bearer API key passes; missing auth → 401; HTMX request missing auth → 200 with `HX-Redirect: /login`; raw API key never stored (only hash); empty-users redirect to `/setup`; `skipAuth: true` bypass honored for `/api/auth/*` and `/health`
 **Acceptance:** `src/auth.ts` with `betterAuth({ apiKey plugin, defaultPrefix: 'ctrf_', storeRawKey: false })`; Better Auth schema generated (`npx better-auth generate`); `/api/auth/*` catch-all route registered with `skipAuth: true`; global `preHandler` checks (1) empty-users redirect to `/setup`, (2) `skipAuth` bypass, (3) Bearer API key, (4) session cookie, (5) HTMX 401 with `HX-Redirect`; integration tests cover: valid session, valid API key, missing auth → 401, HTMX missing auth → HX-Redirect header.
-- [ ] AUTH-001
+- [x] AUTH-001
 
 ---
 

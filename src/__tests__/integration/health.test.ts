@@ -290,9 +290,13 @@ describe('unknown routes', () => {
     await app.close();
   });
 
-  it('returns 404 for an unregistered route', async () => {
+  it('redirects to /setup for an unregistered route when users table is empty (AUTH-001 Branch 1)', async () => {
+    // The empty-users redirect (Branch 1 of the global preHandler) fires
+    // before routing for any non-exempt path, so we never reach a 404.
+    // This is the correct behavior per `better-auth-session-and-api-tokens.md`.
     const res = await app.inject({ method: 'GET', url: '/nonexistent' });
-    expect(res.statusCode).toBe(404);
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('/setup');
   });
 });
 
