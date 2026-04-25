@@ -1,0 +1,55 @@
+# CTRFHub — SQLite Single-Container Deployment
+#
+# Self-host on a tiny VPS with zero external dependencies.
+# Single container: Fastify app with SQLite database.
+# No Postgres, no worker, no Redis.
+#
+# Usage:
+#   cp .env.example .env   # fill in SESSION_SECRET, PUBLIC_URL
+#   docker compose -f compose.sqlite.yml up -d
+#
+# The SQLite database file is persisted on a named volume.
+# The nightly retention cron runs in-process (no separate worker).
+#
+# See: docs/planning/deployment-architecture.md §SQLite deployment
+
+services:
+  app:
+    image: ghcr.io/ctrfhub/ctrfhub:${CTRFHUB_TAG:-latest}
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    environment:
+      # SQLite mode — no DATABASE_URL, only SQLITE_PATH
+      - SQLITE_PATH=/data/ctrfhub.db
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required}
+      - PUBLIC_URL=${PUBLIC_URL:?PUBLIC_URL is required}
+      - PORT=${PORT:-3000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - EVENT_BUS=memory
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - AI_CLOUD_PIPELINE=${AI_CLOUD_PIPELINE:-off}
+      - ARTIFACT_STORAGE=${ARTIFACT_STORAGE:-local}
+      - ARTIFACT_LOCAL_PATH=/data/artifacts
+      - ARTIFACT_PUBLIC_URL=${ARTIFACT_PUBLIC_URL:-}
+      - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-UTC}
+      - RETENTION_CRON_SCHEDULE=${RETENTION_CRON_SCHEDULE:-0 3 * * *}
+      - ALLOW_PRIVATE_WEBHOOK_DESTINATIONS=${ALLOW_PRIVATE_WEBHOOK_DESTINATIONS:-false}
+      - ALLOW_INSECURE_WEBHOOK_DESTINATIONS=${ALLOW_INSECURE_WEBHOOK_DESTINATIONS:-false}
+    volumes:
+      # SQLite database file — persisted across container restarts
+      - sqlite_data:/data
+      # Artifact storage volume (when ARTIFACT_STORAGE=local)
+      - artifacts_data:/data/artifacts
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT:-3000}/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 30s
+
+volumes:
+  sqlite_data:
+  artifacts_data:

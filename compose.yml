@@ -1,0 +1,84 @@
+# CTRFHub — Production Docker Compose (PostgreSQL)
+#
+# Production-like deployment. Uses the published container image from
+# ghcr.io/ctrfhub/ctrfhub (built by CI-001's release job).
+# Postgres runs alongside with a named volume for persistence.
+#
+# Usage:
+#   cp .env.example .env   # fill in all REQUIRED vars
+#   docker compose up -d
+#
+# NOTE: The ghcr.io/ctrfhub/ctrfhub image does not exist yet — CI-001
+# will create it via the release job. This file documents the structure
+# and will work once the image is published.
+#
+# See: docs/planning/architecture.md §Production Deployment
+# See: docs/planning/deployment-architecture.md
+
+services:
+  app:
+    image: ghcr.io/ctrfhub/ctrfhub:${CTRFHUB_TAG:-latest}
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required}
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required}
+      - PUBLIC_URL=${PUBLIC_URL:?PUBLIC_URL is required}
+      - PORT=${PORT:-3000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - EVENT_BUS=${EVENT_BUS:-memory}
+      - REDIS_URL=${REDIS_URL:-}
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - AI_CLOUD_PIPELINE=${AI_CLOUD_PIPELINE:-off}
+      - ARTIFACT_STORAGE=${ARTIFACT_STORAGE:-local}
+      - ARTIFACT_LOCAL_PATH=/data/artifacts
+      - ARTIFACT_PUBLIC_URL=${ARTIFACT_PUBLIC_URL:-}
+      - ARTIFACT_CORS_ORIGINS=${ARTIFACT_CORS_ORIGINS:-https://trace.playwright.dev}
+      - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-UTC}
+      - RETENTION_CRON_SCHEDULE=${RETENTION_CRON_SCHEDULE:-0 3 * * *}
+      - MAX_CTRF_JSON_SIZE=${MAX_CTRF_JSON_SIZE:-10mb}
+      - MAX_ARTIFACT_SIZE_PER_RUN=${MAX_ARTIFACT_SIZE_PER_RUN:-1gb}
+      - ALLOW_PRIVATE_WEBHOOK_DESTINATIONS=${ALLOW_PRIVATE_WEBHOOK_DESTINATIONS:-false}
+      - ALLOW_INSECURE_WEBHOOK_DESTINATIONS=${ALLOW_INSECURE_WEBHOOK_DESTINATIONS:-false}
+      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_KEY=${S3_KEY:-}
+      - S3_SECRET=${S3_SECRET:-}
+    volumes:
+      # Artifact storage volume (only used when ARTIFACT_STORAGE=local)
+      - artifacts_data:/data/artifacts
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # /health returns 503 during boot/migration and 200 when ready.
+      # See architecture.md §Health endpoint for the full state machine.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT:-3000}/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # Fastify's SIGTERM handler closes DB → event bus → server in sequence;
+    # needs ~10-20s safely, 30s is the conservative ceiling.
+    # See architecture.md §Graceful shutdown.
+    stop_grace_period: 30s
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=ctrfhub
+      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER is required}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ctrfhub} -d ctrfhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db_data:
+  artifacts_data:

@@ -1,0 +1,35 @@
+# CTRFHub — Development Dockerfile
+#
+# Minimal dev image that runs tsx watch + Tailwind CLI --watch.
+# Source is volume-mounted from the host for hot-reload.
+#
+# This file is ONLY for compose.dev.yml. The production Dockerfile
+# is owned by CI-001 and does not exist yet.
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Install OS-level deps needed by better-sqlite3 native build
+RUN apk add --no-cache python3 make g++ wget
+
+# Copy package files first for layer caching
+COPY package.json package-lock.json ./
+
+# Install all dependencies (including devDependencies for tsx, tailwind, etc.)
+RUN npm ci
+
+# Source files are volume-mounted at runtime — no COPY of src/ needed.
+# The entrypoint runs both tsx watch and Tailwind CLI concurrently.
+
+# Expose the app port (default 3000, overridable via PORT env var)
+EXPOSE ${PORT:-3000}
+
+# Run tsx watch and Tailwind CSS --watch concurrently.
+# tsx watch restarts the app on any TypeScript change.
+# Tailwind CLI rebuilds CSS on any template/source change.
+# Using shell form so both processes run in parallel.
+CMD sh -c '\
+  npx @tailwindcss/cli -i src/assets/input.css -o src/assets/tailwind.css --watch & \
+  npx tsx watch src/index.ts \
+'
