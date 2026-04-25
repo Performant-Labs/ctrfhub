@@ -86,6 +86,16 @@ Severity: **P0** = blocks implementation; **P1** = factual error / contradiction
 
 ---
 
+### G-P1-006 — `RETENTION_CRON_SCHEDULE` default differs between architecture.md and deployment-architecture.md
+**Source:** Surfaced by CI-002 spec-audit (2026-04-25), Finding #2
+**Affects:** CI-002 `.env.example`, retention cron implementation (future story), any deployer reading either doc
+**Question:** `architecture.md` line 261 documents the default as `0 2 * * *` (02:00 UTC). `deployment-architecture.md` line 233 documents the default as `0 3 * * *` (03:00 UTC) and includes a rationale paragraph about UTC trigger time vs org-TZ cutoff calculation.
+**Canonical source:** `architecture.md` line 272 explicitly declares `deployment-architecture.md §Environment variables` the canonical list. CI-002's `.env.example` follows the canonical source (`0 3 * * *`).
+**Required action:** Reconcile `architecture.md` line 261 to match `deployment-architecture.md` line 233 (`0 3 * * *`), or — if `architecture.md`'s 02:00 was the intended value — flip it on the deployment-architecture side and update `.env.example` in a follow-up. Either way, both docs should agree and the rationale paragraph should sit with the canonical entry.
+**Status:** Open — Argos surfaces, André to decide which value is correct. Implementation in CI-002 not blocked.
+
+---
+
 ## P2 — Missing Surface Area (document before implementing the affected feature)
 
 ### G-P2-001 — Custom Fields API routes undesigned

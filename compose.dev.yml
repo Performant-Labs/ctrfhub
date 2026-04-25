@@ -1,0 +1,75 @@
+# CTRFHub — Development Docker Compose
+#
+# Local development stack. Source is volume-mounted for hot-reload.
+# tsx watch restarts on TypeScript changes; Tailwind CLI watches CSS.
+# Postgres runs as a sidecar.
+#
+# Usage:
+#   cp .env.example .env   # fill in SESSION_SECRET, PUBLIC_URL at minimum
+#   docker compose -f compose.dev.yml up
+#
+# The app container runs two processes via shell entrypoint:
+#   1. tsx watch src/index.ts     — hot-reload app server
+#   2. Tailwind CLI --watch       — rebuild CSS on change
+#
+# See: docs/planning/architecture.md §Local Development
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-ctrfhub}:${POSTGRES_PASSWORD:-changeme}@db:5432/ctrfhub
+      - SESSION_SECRET=${SESSION_SECRET:-dev-secret-change-me-in-production-min-32-chars!!}
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:3000}
+      - PORT=${PORT:-3000}
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
+      - EVENT_BUS=${EVENT_BUS:-memory}
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - AI_CLOUD_PIPELINE=${AI_CLOUD_PIPELINE:-off}
+      - ARTIFACT_STORAGE=${ARTIFACT_STORAGE:-local}
+      - ARTIFACT_LOCAL_PATH=/data/artifacts
+      - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-UTC}
+      - NODE_ENV=development
+    volumes:
+      # Mount source for hot-reload — edits are immediate
+      - .:/app
+      # Prevent host node_modules from overriding container's
+      - /app/node_modules
+      # Artifact storage volume
+      - artifacts_data:/data/artifacts
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT:-3000}/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=ctrfhub
+      - POSTGRES_USER=${POSTGRES_USER:-ctrfhub}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+    ports:
+      # Expose to host for database GUI clients (TablePlus, etc.)
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ctrfhub} -d ctrfhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db_data:
+  artifacts_data:
