@@ -5,6 +5,7 @@
  * Fastify server instance. It wires up:
  *
  * - ZodTypeProvider (runtime validation + TS types from Zod schemas)
+ * - Better Auth (session cookies + API-key validation via global preHandler)
  * - @fastify/helmet (CSP, HSTS, X-Content-Type-Options, COOP)
  * - @fastify/rate-limit (global 600/min default)
  * - @fastify/static (serves compiled Tailwind CSS from src/assets/)
@@ -39,10 +40,14 @@ import fastifyView from '@fastify/view';
 import { Eta } from 'eta';
 import { MikroORM } from '@mikro-orm/core';
 import { defineConfig } from '@mikro-orm/sqlite';
+import { fromNodeHeaders } from 'better-auth/node';
 
 import type { AppOptions } from './types.js';
 import type { BootState } from './modules/health/schemas.js';
 import { HealthResponseSchema } from './modules/health/schemas.js';
+import { buildAuth } from './auth.js';
+import { User } from './entities/index.js';
+import { registerAuthRoutes } from './modules/auth/routes.js';
 
 // ---------------------------------------------------------------------------
 // Module-private: resolve __dirname for ESM (needed by @fastify/static root)
@@ -62,6 +67,15 @@ const __dirname = path.dirname(__filename);
 declare module 'fastify' {
   interface FastifyContextConfig {
     skipAuth?: boolean;
+  }
+  interface FastifyRequest {
+    /**
+     * Per-request MikroORM EntityManager fork.
+     * Set by the `onRequest` hook — never use `fastify.orm.em` directly.
+     * @see skills/mikroorm-dual-dialect.md
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    em: any; // typed as `any` here; downstream handlers use the concrete fork type
   }
 }
 
@@ -123,6 +137,14 @@ const CSP_DIRECTIVES = {
  */
 export async function buildApp(options: AppOptions = {}): Promise<FastifyInstance> {
   const { testing = false } = options;
+
+  // -----------------------------------------------------------------------
+  // 0. Better Auth instance
+  // -----------------------------------------------------------------------
+  // Build early so the preHandler (step 9) and auth route (step 10b) can
+  // close over it. `options.db` is forwarded so integration tests that pass
+  // `db: ':memory:'` get a matching in-memory Better Auth database.
+  const auth = await buildAuth(options.db);
 
   // -----------------------------------------------------------------------
   // 1. Fastify instance with ZodTypeProvider
@@ -308,46 +330,87 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
    */
   app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
     // ── Branch 1: Empty-users redirect to /setup ──
-    // TODO(AUTH-001): Check if users table is empty → redirect to /setup
-    // for all non-exempt routes. Example:
-    //   const userCount = await request.em.count(User);
-    //   if (userCount === 0 && !isExemptRoute(request)) {
-    //     return reply.redirect('/setup');
-    //   }
+    // If the users table is empty, the app has never been configured.
+    // Redirect ALL requests to /setup except the explicit allow-list:
+    //   /setup, /api/auth/*, /health, and static assets (/assets/*).
+    // Browser clients get a 302 redirect; HTMX clients get HX-Redirect + 200.
+    const rawPath = request.url.split('?')[0] ?? '';
+    const isExemptFromEmptyCheck =
+      rawPath === '/setup' ||
+      rawPath.startsWith('/setup/') ||
+      rawPath.startsWith('/api/auth/') ||
+      rawPath === '/health' ||
+      rawPath.startsWith('/assets/');
+
+    if (!isExemptFromEmptyCheck) {
+      let userCount = 0;
+      try {
+        userCount = await request.em.count(User);
+      } catch {
+        // The `user` table may not exist yet if Better Auth's schema migration
+        // hasn't been run (e.g. fresh install before `npx auth migrate`).
+        // Treat as zero users — redirect to /setup so the wizard can run.
+        userCount = 0;
+      }
+      if (userCount === 0) {
+        if (request.headers['hx-request']) {
+          // HTMX needs a 200 (not a redirect) with HX-Redirect to perform
+          // a client-side full-page navigation to /setup.
+          reply.header('HX-Redirect', '/setup');
+          return reply.status(200).send();
+        }
+        return reply.redirect('/setup');
+      }
+    }
 
     // ── Branch 2: skipAuth bypass ──
     // Routes marked with `config: { skipAuth: true }` bypass auth entirely.
-    // This is fully implemented — no TODO.
     const routeConfig = request.routeOptions?.config as { skipAuth?: boolean } | undefined;
     if (routeConfig?.skipAuth) {
       return;
     }
 
-    // ── Branch 3: Bearer API key validation (ctrf_* tokens) ──
-    // TODO(AUTH-001): Extract Authorization header, validate with
-    // auth.api.verifyApiKey(). If valid, attach token metadata to request.
-    //   const authHeader = request.headers.authorization;
-    //   if (authHeader?.startsWith('Bearer ctrf_')) {
-    //     const result = await auth.api.verifyApiKey(authHeader.slice(7));
-    //     if (result.valid) { request.apiKeyUser = result; return; }
-    //   }
+    // ── Branch 3: API key (`x-api-token` header) validation ──
+    // CI pipelines send a `ctrf_*` key in the `x-api-token` header.
+    // `auth.api.verifyApiKey({ body: { key } })` returns { valid, error, key }.
+    // On success, attach the key metadata to `request.apiKeyUser`.
+    //
+    // SECURITY: Never log or echo the raw `x-api-token` value.
+    // Log only presence (truthy/falsy), never the token string itself.
+    const apiToken = request.headers['x-api-token'] as string | undefined;
+    if (apiToken) {
+      const result = await auth.api.verifyApiKey({ body: { key: apiToken } });
+      if (result.valid && result.key) {
+        // Attach the verified key's metadata so downstream handlers (e.g.
+        // CTRF-002 ingest route) can read `request.apiKeyUser.metadata.projectId`.
+        request.apiKeyUser = result.key as import('./auth.js').ApiKeyUser;
+        return;
+      }
+      // Invalid key — do not fall through to session or HTMX-401.
+      // Return 401 immediately to prevent timing attacks where an invalid
+      // key would otherwise trigger a session lookup.
+      return reply.status(401).send({ error: 'Invalid API key', code: 'INVALID_API_KEY' });
+    }
 
     // ── Branch 4: Session cookie validation ──
-    // TODO(AUTH-001): Validate session cookie with auth.api.getSession().
-    //   const session = await auth.api.getSession({ headers: request.headers });
-    //   if (session) { request.user = session.user; return; }
+    // Browser users have a Better Auth session cookie (SameSite=Lax).
+    // `fromNodeHeaders` converts Fastify's Node.js headers to the Fetch API
+    // `Headers` object that Better Auth expects.
+    const session = await auth.api.getSession({ headers: fromNodeHeaders(request.headers) });
+    if (session?.user) {
+      request.user = session.user as import('./auth.js').SessionUser;
+      return;
+    }
 
-    // ── Branch 5: HTMX 401 with HX-Redirect ──
-    // TODO(AUTH-001): If HTMX request and unauthenticated:
-    //   if (request.headers['hx-request']) {
-    //     reply.header('HX-Redirect', '/login');
-    //     return reply.status(401).send();
-    //   }
-    //   return reply.redirect('/login');
-
-    // ── INFRA-002 stub: allow all requests through ──
-    // This always-allow behaviour is replaced by AUTH-001 with real checks.
-    return;
+    // ── Branch 5: Unauthenticated — HTMX 401 or browser redirect ──
+    // No auth resolved. HTMX clients need a 200-with-HX-Redirect (NOT 401)
+    // because HTMX only processes response headers on 2xx responses by default.
+    // Browser clients get a standard 302 redirect.
+    if (request.headers['hx-request']) {
+      reply.header('HX-Redirect', '/login');
+      return reply.status(401).send();
+    }
+    return reply.redirect('/login');
   });
 
   // -----------------------------------------------------------------------
@@ -411,6 +474,11 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       dbReady: true,
     });
   });
+
+  // -----------------------------------------------------------------------
+  // 10b. Register Better Auth `/api/auth/*` catch-all route
+  // -----------------------------------------------------------------------
+  await registerAuthRoutes(app, auth);
 
   // -----------------------------------------------------------------------
   // 11. Process signal handlers (production only — tests manage lifecycle)

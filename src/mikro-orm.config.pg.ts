@@ -37,7 +37,11 @@ export default defineConfig({
    * @see docs/planning/database-design.md §4 (Better Auth note)
    */
   schemaGenerator: {
-    skipTables: ['organization', 'user', 'session', 'account', 'verification'],
+    /**
+     * Better Auth manages its own tables — exclude them from migration generation.
+     * `apikey` was added in AUTH-001 when the @better-auth/api-key plugin landed.
+     */
+    skipTables: ['organization', 'user', 'session', 'account', 'verification', 'apikey'],
   },
 
   /**
