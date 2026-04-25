@@ -1,0 +1,7 @@
+# Talos Session Handoff — AUTH-001
+
+**Timestamp:** 2026-04-25T12:24 PDT  
+**Branch:** `story/AUTH-001`  
+**Session status:** Research complete — no test file written yet.
+
+I fully read `feature-handoff.md`, `src/auth.ts`, `src/app.ts`, `src/modules/auth/routes.ts`, the existing `health.test.ts` pattern, the `vitest-three-layer-testing.md` skill, and the `page-verification-hierarchy.md` skill. The target file is `src/__tests__/integration/auth.test.ts` (does not exist yet). The key architectural constraint I identified before time ran out: `buildApp({ testing: true, db: ':memory:' })` passes `':memory:'` to **both** `buildAuth()` and `MikroORM.init()`, which creates two completely separate in-memory SQLite databases. Better Auth's database gets the `user` table; MikroORM's does not. This means `em.count(User)` always throws → caught → `userCount = 0` → Branch 1 redirects all non-exempt routes in a plain `:memory:` app — so Branch 1 tests work naturally with `:memory:`, but Branches 3/4/5 (which require a user to exist so Branch 1 is skipped) need a **temp file-based SQLite** shared by both Better Auth and MikroORM. The next session should: (1) write `src/__tests__/integration/auth.test.ts` using `:memory:` for Branch 1 suites and `os.tmpdir() + randomUUID() + '.db'` for Branches 3–5 suites, seeding a user via `app.inject({ method: 'POST', url: '/api/auth/sign-up/email', ... })` before the auth-dependent tests run; (2) run `npm run test:int`; (3) write tier reports and the test-handoff.
