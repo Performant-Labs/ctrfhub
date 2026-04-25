@@ -99,7 +99,7 @@ Status key:
 **Page verification tiers:** none (schema only, no routes)
 **Critical test paths:** valid CTRF report passes; missing required fields rejected with 422-shaped error; wrong types rejected; `status: 'other'` accepted (per gap G-P2-004); 100% branch coverage on `CtrfReportSchema`
 **Acceptance:** `src/modules/ingest/schemas.ts` with `CtrfReportSchema` covering full CTRF spec including `status: 'other'`; unit tests: valid report passes, missing required fields rejected (422), wrong types rejected, `other` status accepted; `ctrf-validator.test.ts` written; 100% branch coverage on schema.
-- [ ] CTRF-001
+- [x] CTRF-001
 
 ---
 

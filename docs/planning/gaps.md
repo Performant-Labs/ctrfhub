@@ -114,7 +114,7 @@ Severity: **P0** = blocks implementation; **P1** = factual error / contradiction
 **Source:** `gap-review-merged.md #27`
 **Affects:** CTRF-001, CTRF-002
 **Fix needed:** `CtrfReportSchema` must accept `status: 'other'`; `test_runs.other` counter must be incremented during rollup.
-**Status:** Addressed in CTRF-001 acceptance criteria — implementer must handle `other` status.
+**Status:** ✅ **Partially Resolved** — schema-side fix landed in CTRF-001 (`CtrfStatusSchema` includes `'other'`; tests guard against regression at test level, retry-attempt level, and step level — see `.argos/CTRF-001/spec-audit.md`). The `test_runs.other` counter rollup remains for CTRF-002 (ingest route + service); will close fully when that lands.
 
 ---
 
