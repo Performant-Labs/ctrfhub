@@ -26,7 +26,7 @@ The trade-off is real: manual relay is slower than autonomous dispatch, but ever
 | **André** | Human operator, PR reviewer, gap arbiter | — | Everything | Merges, gap decisions, escalation responses |
 | **Argos** | Orchestrator — assigns, gates, never codes | Opus 4.7 | `ORCHESTRATOR_HANDOFF.md`, `docs/planning/tasks.md`, `docs/planning/gaps.md`, relevant planning sections | Task Briefs, `tasks.md` status transitions, session notes |
 | **Feature-implementer** | Writes application code | Opus 4.7 | Task Brief, required skills, planning docs named in brief | Code in `src/`, migrations, commits on story branch, feature-handoff note |
-| **Test-writer** | Runs T1/T2/T3, writes tests | Opus 4.7 | Feature handoff, `test-writer.md`, `page-verification-hierarchy.md`, `vitest-three-layer-testing.md` | Test files in `src/__tests__/` and `e2e/`, commits on story branch, tier reports, test-handoff note |
+| **Test-writer** | Runs T1 / T2 (or T2.5) / T3, writes tests | Opus 4.7 | Feature handoff, `test-writer.md`, `page-verification-hierarchy.md`, `vitest-three-layer-testing.md` | Test files in `src/__tests__/` and `e2e/`, commits on story branch, tier reports, test-handoff note |
 | **Spec-enforcer** | Read-only audit | Opus 4.7 (Opus 4.6 on `high-stakes` label) | Diff vs `main`, all `skills/`, `docs/planning/*` | PASS/BLOCK audit report only |
 | **PR-Agent (cloud)** | Automated PR review | Kimi K2.6 default / Opus 4.6 on `high-stakes` | Diff, `CLAUDE.md`, `skills/`, `docs/planning/tasks.md` | PR comments, inline review |
 | **Human reviewer** | Final merge gate | — (André again) | PR diff, PR-Agent findings, handoff notes | Merge / bounce |
@@ -50,7 +50,7 @@ The trade-off is real: manual relay is slower than autonomous dispatch, but ever
    │                            │ feature-handoff │                  │               │                │
    │ ◄──────────────────────────│ "ready for T1"  │                  │               │                │
    │                                             │                  │               │                │
-   │ ─ opens new session ───────────────────────►│ runs T1, T2,      │               │                │
+   │ ─ opens new session ───────────────────────►│ runs T1, T2/T2.5, │               │                │
    │                                             │ writes tests,     │               │                │
    │                                             │ runs T3 if UI,    │               │                │
    │                                             │ commits, writes   │               │                │
@@ -107,7 +107,10 @@ Each subsection describes one session type. Entry = what André pastes. Reads = 
 - **Reads.** `skills/page-verification-hierarchy.md`, `skills/vitest-three-layer-testing.md`, planning docs from the Brief, all skills touched by the diff.
 - **Produces (in order, gated per skill):**
   1. `.argos/<taskId>/tier-1-report.md` — T1 Headless (Fastify inject / curl) outputs.
-  2. `.argos/<taskId>/tier-2-report.md` — T2 ARIA structural assertions. **Required before T3.**
+  2. **One** of:
+     - `.argos/<taskId>/tier-2-report.md` — T2 ARIA via clean-room browser, for unauthenticated routes; **or**
+     - `.argos/<taskId>/tier-2-5-report.md` — T2.5 via `~/.local/bin/browser-harness` attached to the developer's logged-in Chrome, for any route past AUTH-001.
+     The choice is a property of the route's auth posture, not a tier above one another. **Required before T3.**
   3. Unit / integration / E2E test files per the story's declared tiers, committed to `story/<taskId>`.
   4. `.argos/<taskId>/tier-3-report.md` + `screenshots/` — T3 visual (UI stories only).
   5. `.argos/<taskId>/test-handoff.md` — summary.
@@ -160,7 +163,8 @@ ctrfhub/
 │       ├── brief.md                ← Argos writes at 4.1
 │       ├── feature-handoff.md      ← Feature-implementer writes at 4.2
 │       ├── tier-1-report.md        ← Test-writer writes at 4.3
-│       ├── tier-2-report.md
+│       ├── tier-2-report.md            (one of these two — never both)
+│       ├── tier-2-5-report.md          (auth-gated routes: browser-harness)
 │       ├── tier-3-report.md        (UI stories only)
 │       ├── test-handoff.md
 │       ├── spec-audit.md           ← Spec-enforcer writes at 4.4
@@ -232,7 +236,7 @@ Track the build of this system here. Each row is an atomic piece of the architec
 | 11 | `CLAUDE.md` references this doc in the reading order | A | ✅ | `CLAUDE.md` | Now item 1 under "Authoritative context" |
 | 12 | Task Brief template | B | ✅ | `implementstory.md` §1.2 | Full brief template with preconditions, story, reading list, next-action |
 | 13 | Feature-handoff template | B | ✅ | `feature-implementer.md` §Feature-handoff template | Branch, commits, what-was-built, commands, decisions, next-action |
-| 14 | Tier-report templates (T1/T2/T3) | B | ✅ | `test-writer.md` §Tier 1/2/3 report templates | Three tables, backdrop-contrast gate baked into T2 |
+| 14 | Tier-report templates (T1 / T2 / T2.5 / T3) | B | ✅ | `test-writer.md` §Tier 1/2/2.5/3 report templates | Four tables, backdrop-contrast gate baked into both T2 and T2.5 |
 | 15 | Test-handoff template | B | ✅ | `test-writer.md` §Test-handoff template | Tier summary, tests added, coverage, next-action |
 | 16 | Spec-audit template | B | ✅ | `spec-enforcer.md` §Spec-audit template | Findings / Coverage / Conformance / Forbidden-pattern / Verdict |
 | 17 | PR body template (`.argos/<taskId>/pr-body.md`) | B | ✅ | `implementstory.md` §Phase 8 | Acceptance checkboxes, tier results, deviations, gaps, next-stories |
@@ -246,9 +250,10 @@ Track the build of this system here. Each row is an atomic piece of the architec
 | 25 | Optional `STATE.md` observability file | C | ⬜ | Repo root, gitignored | Running log of in-flight stories |
 | 26 | Commit-msg hook validating story ID | C | ⬜ | `.husky/commit-msg` or similar | Cheap drift insurance |
 | 27 | Self-hosted runner + Tailscale (local `claude -p` review path) | D | ⬜ | GitHub Settings + `.antigravity/scripts/pr-review.sh` | Optional; cloud path already works |
-| 28 | CI workflow for unit / integration / E2E tests | D | ⬜ | `.github/workflows/ci.yml` | Story CI-001 in the backlog |
-| 29 | Dog-food CTRF loop (CI runs CTRF reports back into CTRFHub) | D | ⬜ | CI workflow additions | Blocked on CTRFHub being alive |
-| 30 | Self-hosted deployment for CTRFHub staging (for dog-food) | D | ⬜ | Infra not yet chosen | Deferred |
+| 28 | CI workflow for unit / integration / E2E tests | D | ⬜ | `.github/workflows/ci.yml` | Story CI-001 in the backlog. Followed by a `tugboat-preview` job (item 30) that posts the per-PR preview URL into the PR description for T2.5 / human review. |
+| 29 | Dog-food CTRF loop (CI runs CTRF reports back into CTRFHub) | D | ⬜ | CI workflow additions | Per-PR loop via Tugboat: each PR's E2E job ingests its CTRF report into the *same* per-PR Tugboat preview that's running this PR's build. Better than a single staging environment because dog-food behavior tracks the change under review. Blocked on items 28 and 30 (and INFRA-001 → AUTH-001 to give Tugboat something to deploy). |
+| 30 | Per-PR preview / staging via Tugboat | D | ⬜ | `.tugboat/config.yml` (new file in repo) + Tugboat dashboard | **Decision:** replaces the original "self-hosted staging" plan with hosted per-PR preview environments. Free tier covers solo development; revisit if PR volume scales. Build steps: `docker compose up` + run migrations + seed an initial admin user. The preview URL becomes the canonical "running CTRFHub instance" for T2.5 interactive verification on authenticated routes. **Cannot land until INFRA-001 → AUTH-001 ship a deployable app** — a Tugboat config that points at nothing is dead yaml. New backlog story `CI-003` will own the Tugboat config; depends on AUTH-001. |
+| 31 | Tier 2.5 (Authenticated State Verification) wired through skill, role, and workflow docs | B | ✅ | `skills/page-verification-hierarchy.md`, `test-writer.md`, `implementstory.md`, `ORCHESTRATOR_HANDOFF.md` | New tier added to `~/Sites/ai_guidance/testing/verification-cookbook.md` on 2026-04-24; CTRFHub propagation done in PR #5. Uses `~/.local/bin/browser-harness` (developer-only tool, CDP attach to active Chrome tab). Pre-condition: developer logs into local dev server or per-PR Tugboat preview. T2 / T2.5 are mutually exclusive per route; auth posture decides. |
 
 **Legend.** ✅ = done. ⬜ = not yet. 🟡 = in progress.
 

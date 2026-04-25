@@ -336,3 +336,15 @@ Status key:
 - [ ] CI-002
 
 ---
+
+### CI-003 — Tugboat per-PR preview + dog-food CTRF ingestion
+**Depends on:** AUTH-001 (need a deployable app with login), CI-001 (need the CI workflow), CI-002 (need the Docker Compose stack Tugboat builds from)
+**Skills required:** `better-auth-session-and-api-tokens.md` (admin seed), `mikroorm-dual-dialect.md` (migrations on Tugboat boot)
+**Test tiers required:** integration (CI itself produces a green preview build)
+**Page verification tiers:** T1 Headless (`/health` returns 200 on the preview URL), T2.5 (smoke check on the preview from the developer's Chrome — login as the seeded admin, confirm dashboard loads)
+**Critical test paths:** Each PR opens → Tugboat builds the preview from `compose.yml` → migrations run as a build step (PG dialect) → an initial admin user is seeded so the developer can log in → preview URL is posted into the PR description → the CI E2E job ingests its own CTRF report into the per-PR preview's CTRFHub instance, closing the dog-food loop on the change actually being reviewed.
+**Acceptance:** `.tugboat/config.yml` at repo root defines services (Postgres + app), build steps (npm install → migrate:pg → seed admin), and the URL-post step; first PR opened after this story merges produces a working preview reachable at `pr-N.<tugboat-subdomain>.tugboatqa.com`; preview's CTRFHub has the seeded admin (credentials supplied via env var on Tugboat) and can be logged into; CI E2E job has been amended to use the preview URL for ingest, and the report is visible in the preview's run list; `.github/workflows/ci.yml` posts the preview URL into the PR description as part of the `pr-agent` workflow output (or via a new lightweight job).
+**Optional API follow-ups (not required for the first cut):** Tugboat exposes a token-authenticated REST API at `https://api.tugboatqa.com/v3`. Once the baseline integration above is green, the CI E2E job can optionally poll the API to gate ingest on preview status `= ready` and probe the preview's `/health` before sending the CTRF report — both reduce flakes when Tugboat's build is slow. **Teardown is not in scope:** Tugboat auto-deletes stale previews per its own preview-lifecycle policy.
+- [ ] CI-003
+
+---

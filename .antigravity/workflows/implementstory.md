@@ -106,20 +106,26 @@ Write to `.argos/<taskId>/brief.md` (gitignored — never commit it). Use this t
 
 ---
 
-## Phase 3 — Tier 2 Verification (ARIA Structural Skeleton)
+## Phase 3 — Structural Verification (Tier 2 or Tier 2.5)
 
 **Executed by: Test-writer**
 
-1. Start the dev server with the implemented story loaded.
-2. Navigate to the relevant screen using `browser_subagent` or `read_browser_page`.
-3. Read the ARIA tree and verify:
-   - Required heading structure present (`h1`, `h2` hierarchy correct).
-   - Required interactive elements present (buttons, forms, links with correct labels).
-   - ARIA roles correct (`role="table"`, `aria-label` on icon-only buttons, etc.).
-   - No duplicate landmark roles.
-4. Run `npx playwright test` for the spec file covering this story (if it exists).
+Choose the tier by the route's auth posture:
 
-**Gate:** Tier 2 MUST pass before proceeding to Tier 3. If Tier 2 fails, return to Feature-implementer with the ARIA snapshot and specific remediation steps.
+- **Tier 2** for unauthenticated routes (`/setup`, `/login`, `/forgot-password`, `/health`). Tools: `read_browser_page` or Playwright `accessibility.snapshot()` against a clean-room browser.
+- **Tier 2.5** for any auth-gated route (everything past AUTH-001 — dashboard, run list, run detail, settings, AI panels, admin). Pre-condition: developer logs into a running CTRFHub instance (local `npm run dev` or per-PR Tugboat preview) in their daily-driver Chrome and leaves the tab active. Tool: `~/.local/bin/browser-harness` invoked via `Bash` heredoc, with `ensure_real_tab()` first to avoid reading a stray tab. Full method in `skills/page-verification-hierarchy.md §T2.5` and the report template in `.antigravity/agents/test-writer.md`.
+
+Either tier reads the same kind of evidence:
+
+1. Required heading structure present (`h1`, `h2` hierarchy correct).
+2. Required interactive elements present (buttons, forms, links with correct labels).
+3. ARIA roles correct (`role="table"`, `aria-label` on icon-only buttons, etc.).
+4. No duplicate landmark roles.
+5. **If the diff touches a layout token, backdrop, `[data-theme]` zone, or `@layer components` surface:** run the numeric WCAG contrast re-check from `skills/page-verification-hierarchy.md §Backdrop-contrast`.
+
+After the structural assertions pass, run `npx playwright test` for any spec file covering this story (CI E2E lane uses `buildApp({ testing: true })` for fixture-user injection — that's parallel to T2.5, not a substitute).
+
+**Gate:** the chosen tier MUST pass before proceeding to Tier 3. If it fails, return to Feature-implementer with the ARIA snapshot and specific remediation steps.
 
 ---
 
@@ -222,10 +228,13 @@ Verbatim from `docs/planning/tasks.md` → `<taskId>` → `Acceptance:`. Check e
 
 ## Page verification tiers
 
+T2 *or* T2.5 — fill the row that applied; mark the other "N/A — see <other tier>".
+
 | Tier | Declared | Result | Report location (story branch) |
 |---|---|---|---|
 | T1 Headless | <from tasks.md> | ✓ | `.argos/<taskId>/tier-1-report.md` |
-| T2 ARIA | <from tasks.md> | ✓ | `.argos/<taskId>/tier-2-report.md` |
+| T2 ARIA (clean room) | <yes / no — unauthenticated route> | ✓ / N/A | `.argos/<taskId>/tier-2-report.md` |
+| T2.5 Authenticated State | <yes / no — auth-gated route> | ✓ / N/A | `.argos/<taskId>/tier-2-5-report.md` |
 | T3 Visual | <from tasks.md, or N/A> | ✓ / N/A | `.argos/<taskId>/tier-3-report.md` |
 
 ## Decisions that deviate from spec
