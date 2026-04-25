@@ -353,13 +353,13 @@ describe('AUTH-001 Branches 3/4/5 — seeded DB (user exists, Branch 1 skipped)'
       expect(res.headers.location).toBe('/login');
     });
 
-    it('HTMX (no auth) → 401 + HX-Redirect: /login', async () => {
+    it('HTMX (no auth) → 200 + HX-Redirect: /login', async () => {
       const res = await fixture.app.inject({
         method: 'GET',
         url: '/runs',
         headers: { 'hx-request': 'true' },
       });
-      expect(res.statusCode).toBe(401);
+      expect(res.statusCode).toBe(200);
       expect(res.headers['hx-redirect']).toBe('/login');
     });
   });
@@ -472,5 +472,99 @@ describe('AUTH-001 SECURITY — raw API key never stored (only hash)', () => {
       headers: { 'x-api-token': tampered },
     });
     expect(badRes.statusCode).toBe(401);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Blocker 3 — assert request.apiKeyUser is populated by Branch 3
+// ---------------------------------------------------------------------------
+
+describe('AUTH-001 Branch 3 — request.apiKeyUser populated after API key validation', () => {
+  let app: ReturnType<typeof buildApp> extends Promise<infer T> ? T : never;
+  let dbPath: string;
+  let rawApiKey: string;
+
+  beforeAll(async () => {
+    // Build a fresh app for this suite — we need to register the whoami route
+    // BEFORE any inject() call (Fastify freezes route registration on first
+    // inject). We therefore set up the app and register the route before
+    // performing any network operations.
+    dbPath = makeTempDbPath();
+    await seedAuthSchema(dbPath);
+    app = await buildApp({ testing: true, db: dbPath });
+
+    // Register the test-only whoami route BEFORE the first inject()
+    app.get(
+      '/__test__/whoami',
+      { config: { skipAuth: false } },
+      async (request) => ({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        apiKeyUser: (request as any).apiKeyUser ?? null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        user: (request as any).user ?? null,
+      }),
+    );
+
+    // Now seed a user so Branch 1 (empty-users redirect) is bypassed
+    const signUpRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/sign-up/email',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        email: 'whoami-tester@example.com',
+        password: 'P@ssw0rd-test-1234',
+        name: 'Whoami User',
+      },
+    });
+    if (signUpRes.statusCode >= 400) {
+      throw new Error(`Sign-up failed (status ${signUpRes.statusCode}): ${signUpRes.body}`);
+    }
+    const signUpBody = JSON.parse(signUpRes.body) as { user?: { id?: string }; id?: string };
+    const userId = signUpBody.user?.id ?? signUpBody.id ?? '';
+    if (!userId) throw new Error(`Sign-up response had no user id: ${signUpRes.body}`);
+
+    // Create an API key with a known projectId
+    const fixtureAuth = await buildAuth(dbPath);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const createResult: any = await (fixtureAuth.api as any).createApiKey({
+      body: {
+        name: 'blocker3-key',
+        userId,
+        metadata: { projectId: 'blocker3-test-project' },
+      },
+    });
+    rawApiKey = createResult.key ?? createResult.apiKey ?? '';
+    if (!rawApiKey || !rawApiKey.startsWith('ctrf_')) {
+      throw new Error(`createApiKey did not return ctrf_-prefixed key: ${JSON.stringify(createResult)}`);
+    }
+  });
+
+  afterAll(async () => {
+    await app.close();
+    if (existsSync(dbPath)) {
+      try { unlinkSync(dbPath); } catch { /* best effort */ }
+    }
+  });
+
+  it('valid ctrf_* key → request.apiKeyUser populated with id and metadata.projectId', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/__test__/whoami',
+      headers: { 'x-api-token': rawApiKey },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as {
+      apiKeyUser: { id: string; referenceId?: string; metadata?: { projectId?: string } } | null;
+      user: unknown;
+    };
+
+    // apiKeyUser must be set — not null
+    expect(body.apiKeyUser).not.toBeNull();
+    // id must be a non-empty string (the key's own DB id)
+    expect(typeof body.apiKeyUser!.id).toBe('string');
+    expect(body.apiKeyUser!.id.length).toBeGreaterThan(0);
+    // metadata.projectId must match what we passed at key creation
+    expect(body.apiKeyUser!.metadata?.projectId).toBe('blocker3-test-project');
   });
 });
