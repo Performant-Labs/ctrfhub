@@ -1,0 +1,5 @@
+# Mark generated files so GitHub:
+#   - collapses them in the PR "Files changed" view by default
+#   - excludes them from repo language statistics
+# This is UX-only; the diff content remains available to tools that fetch it.
+package-lock.json linguist-generated=true
