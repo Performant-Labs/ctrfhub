@@ -192,6 +192,90 @@ describe('GET /health', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Test suite — GET /health 503 readiness paths
+//
+// INFRA-002 critical test path (from .argos/INFRA-002/brief.md):
+//   "/health integration test toggles bootState and asserts 503 → 200 transition."
+//
+// The 503 response body shape during boot/migration is per src/app.ts L380-385:
+//   { status: bootState, bootState, dbReady: false }
+// ---------------------------------------------------------------------------
+
+describe('GET /health — 503 readiness paths', () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildApp({ testing: true, db: ':memory:' });
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('returns 503 when bootState is "booting"', async () => {
+    (app as any).setBootState('booting');
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(res.statusCode).toBe(503);
+  });
+
+  it('returns correct body shape when bootState is "booting"', async () => {
+    (app as any).setBootState('booting');
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(JSON.parse(res.body)).toEqual({
+      status: 'booting',
+      bootState: 'booting',
+      dbReady: false,
+    });
+  });
+
+  it('returns 503 when bootState is "migrating"', async () => {
+    (app as any).setBootState('migrating');
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(res.statusCode).toBe(503);
+  });
+
+  it('returns correct body shape when bootState is "migrating"', async () => {
+    (app as any).setBootState('migrating');
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(JSON.parse(res.body)).toEqual({
+      status: 'migrating',
+      bootState: 'migrating',
+      dbReady: false,
+    });
+  });
+
+  it('does not perform the SELECT 1 DB check while bootState !== "ready"', async () => {
+    // Per src/app.ts L379-386 the booting/migrating branch returns immediately
+    // without touching the DB. Verifying via dbReady: false in the body —
+    // a SELECT 1 succeeded path would have set dbReady: true.
+    (app as any).setBootState('booting');
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(JSON.parse(res.body)).toMatchObject({ dbReady: false });
+  });
+
+  it('transitions 503 → 200 as bootState moves booting → migrating → ready', async () => {
+    (app as any).setBootState('booting');
+    const r1 = await app.inject({ method: 'GET', url: '/health' });
+    expect(r1.statusCode).toBe(503);
+    expect(JSON.parse(r1.body)).toMatchObject({ bootState: 'booting' });
+
+    (app as any).setBootState('migrating');
+    const r2 = await app.inject({ method: 'GET', url: '/health' });
+    expect(r2.statusCode).toBe(503);
+    expect(JSON.parse(r2.body)).toMatchObject({ bootState: 'migrating' });
+
+    (app as any).setBootState('ready');
+    const r3 = await app.inject({ method: 'GET', url: '/health' });
+    expect(r3.statusCode).toBe(200);
+    expect(JSON.parse(r3.body)).toMatchObject({
+      status: 'ok',
+      bootState: 'ready',
+      dbReady: true,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Test suite — 404 for unknown routes
 // ---------------------------------------------------------------------------
 
