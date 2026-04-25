@@ -52,7 +52,7 @@ Severity: **P0** = blocks implementation; **P1** = factual error / contradiction
 **Source:** `gap-review-merged.md #5`
 **Affects:** CTRF-003
 **Fix:** Delete the line "via `/api/artifact`" from `project-plan.md`. The authoritative spec (`product.md §Feature 4`) is clear: no separate artifact endpoint.
-**Status:** Open — doc fix needed (does not block CTRF-003, which uses `product.md` as spec)
+**Status:** ✅ **Resolved** — `chore(spec): align ingest auth + endpoint references with product.md`. project-plan.md L63 reworded to match `product.md §Feature 4` (artifacts co-uploaded with the run; no separate `/api/artifact`). Same PR also fixed the parallel drift on L70 (`Authorization: Bearer` → `x-api-token`, `/api/ingest` → `/api/v1/projects/:slug/runs`) and the long-standing inconsistency in `skills/better-auth-session-and-api-tokens.md` flagged by the joint INFRA-001/002/004 spec-audit Finding #2.
 
 ---
 
