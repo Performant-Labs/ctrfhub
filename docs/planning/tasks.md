@@ -18,7 +18,7 @@ Status key:
 **Page verification tiers:** none (no routes yet)
 **Critical test paths:** coverage thresholds 80/80/75 enforced by vitest config; dual MikroORM configs (`mikro-orm.config.pg.ts`, `mikro-orm.config.sqlite.ts`) both load without error; `tsc --noEmit` passes
 **Acceptance:** `npm install` succeeds; `tsc --noEmit` passes on empty src/; ESLint config in place; `package.json` has all required scripts (`dev`, `build`, `test`, `test:unit`, `test:int`, `test:e2e`, `test:coverage`, `migrate:pg`, `migrate:sqlite`, `migrate:create:pg`, `migrate:create:sqlite`, `css:dev`, `css:build`); `vitest.config.ts` with coverage thresholds (80/80/75); `e2e/playwright.config.ts` with two-viewport matrix (1280×800, 375×800); dual MikroORM config files (`mikro-orm.config.ts`, `mikro-orm.config.pg.ts`, `mikro-orm.config.sqlite.ts`); `src/client/htmx-events.ts` constants file bootstrapped.
-- [/] INFRA-001
+- [x] INFRA-001
 
 ---
 
