@@ -59,7 +59,9 @@ Argos Phase 7 close-out: chore(<taskId>): complete commit + open PR
 Human merges
 ```
 
-The `.argos/<taskId>/` directory is **gitignored** — briefs, handoffs, tier reports, and audit reports are ephemeral coordination artifacts. The PR description carries the durable audit trail for each merged story.
+The `.argos/<taskId>/` directory is **tracked** (not gitignored) and travels with the story branch. Argos commits the brief on the story branch before handing off to a feature-implementer — Daedalus reads it directly from `~/Projects/ctrfhub/.argos/<taskId>/brief.md` after `git pull`; Talos does the same in the VM. Handoffs, tier reports, and spec-audits get committed on the same branch as work progresses, so the entire coordination trail is durable, version-controlled, and visible to every workspace.
+
+Once the story PR squash-merges, the briefs/handoffs are part of main's history. The PR description still summarizes the story for human readers, but the `.argos/<taskId>/` files are the canonical record of who-said-what during implementation.
 
 ---
 

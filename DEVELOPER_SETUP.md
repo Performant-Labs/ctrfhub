@@ -113,8 +113,8 @@ Confirm these files exist in the clone (each is essential context the implemente
 - At least 14 files under `skills/`
 - `docs/planning/` containing at least: `project-architecture.md`, `project-plan.md`, `architecture.md`, `product.md`, `database-design.md`, `tasks.md`, `gaps.md`
 
-### 8. Argos scratchpad gitignored
-- `cd ~/Projects/ctrfhub && git check-ignore .argos/` — should print `.argos/`. This confirms the briefs / handoffs you'll write to that directory don't leak into commits.
+### 8. Argos scratchpad tracked (NOT gitignored)
+- `cd ~/Projects/ctrfhub && git check-ignore .argos/ && echo IGNORED || echo TRACKED` — should print `TRACKED`. The `.argos/<taskId>/` directory holds briefs, handoffs, and audits that travel with the story branch so every AntiGravity workspace can `git pull` them. If it prints `IGNORED`, the workspace is on an old `.gitignore` from before that convention landed — `git pull origin main` to refresh.
 
 ### 9. Browser harness (optional — only needed for T2.5 Authenticated State on auth-gated UI stories)
 - `ls -l ~/.local/bin/browser-harness 2>/dev/null` — note whether present. If missing, that's fine for stories without auth-gated UI (CTRF-001 and most early stories); flag it so it can be set up before the first auth-gated UI verification story (DASH-001 onwards).
@@ -146,7 +146,7 @@ Reply to André with this structured report. No narrative — Argos parses it di
 | 5 | npm install clean | PASS / FAIL / WARN | <exit code; deprecation/warning summary> |
 | 6 | tsc --noEmit + npm test | PASS / FAIL | <test files / tests passed counts> |
 | 7 | Skills + agents files present | PASS / FAIL / WARN | <missing files if any; agents.md missing → WARN "known gap"> |
-| 8 | .argos/ gitignored | PASS / FAIL | — |
+| 8 | .argos/ tracked (NOT gitignored) | PASS / FAIL | — (FAIL → workspace is on stale .gitignore; `git pull origin main`) |
 | 9 | browser-harness present | PASS / WARN | <only WARN if missing> |
 
 ### Overall
