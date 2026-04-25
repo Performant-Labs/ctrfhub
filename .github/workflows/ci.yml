@@ -1,0 +1,226 @@
+# CTRFHub — Per-PR CI Pipeline
+#
+# Jobs (in order):
+#   lint       → tsc --noEmit + ESLint (non-blocking gate, runs in parallel with unit)
+#   unit       → Vitest unit tests (fast, no DB)
+#   integration→ Vitest integration tests (needs unit; SQLite in-memory, no services needed)
+#   e2e        → Playwright E2E (needs integration; real app + Postgres service)
+#
+# Dog-food rule (architecture.md §CI / CD): the e2e job ingests its own CTRF
+# report back to a staging CTRFHub instance. The ingest step uses
+# `continue-on-error: true` for the first cut — staging outages must not
+# red-light PRs. CI-003 (Tugboat) will harden this path.
+#
+# Self-hosted runners are FORBIDDEN (cleanup/strip-self-hosted-runner-vestige).
+# All jobs run on GitHub-hosted ubuntu-latest.
+
+name: CI
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+  push:
+    branches:
+      - main
+
+# Cancel in-progress CI runs when a newer commit is pushed to the same PR/branch.
+# Saves bill-time on rapid consecutive pushes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Node.js 24 actions opt-in (Node 20 actions deprecated Jun 2026)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # lint — tsc --noEmit + ESLint
+  # Non-blocking: annotates the PR but does not block integration/e2e if it
+  # fails (type errors are caught here before integration tests waste time).
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript typecheck (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npx eslint src/ --ext .ts
+
+  # ---------------------------------------------------------------------------
+  # unit — Vitest unit tests
+  # No database, no HTTP, no filesystem. < 200ms expected.
+  # ---------------------------------------------------------------------------
+  unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+  # ---------------------------------------------------------------------------
+  # integration — Vitest integration tests
+  # Uses SQLite in-memory (buildApp({ db: ':memory:' })) — no Postgres needed.
+  # Runs after unit to respect the test pyramid ordering.
+  # ---------------------------------------------------------------------------
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: unit
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run integration tests
+        run: npm run test:int
+        env:
+          # Better Auth secret for the test instances created by buildApp()
+          BETTER_AUTH_SECRET: ci-test-secret-do-not-use-in-production-32ch
+          # Ensure tests use SQLite in-memory (belt-and-braces; buildApp sets this)
+          NODE_ENV: test
+
+  # ---------------------------------------------------------------------------
+  # e2e — Playwright E2E tests
+  # Requires a running CTRFHub instance against a real Postgres database.
+  # Runs after integration to preserve test pyramid ordering.
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: integration
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ctrfhub
+          POSTGRES_PASSWORD: ctrfhub
+          POSTGRES_DB: ctrfhub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://ctrfhub:ctrfhub@localhost:5432/ctrfhub
+      BETTER_AUTH_SECRET: ci-e2e-secret-do-not-use-in-production-32chars
+      BETTER_AUTH_URL: http://localhost:3000
+      PORT: 3000
+      NODE_ENV: test
+      CTRFHUB_E2E_BASE_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium + system deps
+        run: npx playwright install --with-deps chromium
+
+      - name: Build application (tsc + Tailwind CSS)
+        run: npm run build
+
+      - name: Start application (background)
+        run: node dist/index.js &
+        # Give the app time to run migrations and reach 'ready' state
+
+      - name: Wait for app to be healthy
+        run: |
+          for i in $(seq 1 30); do
+            STATUS=$(curl -sf http://localhost:3000/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
+            if [ "$STATUS" = "ok" ]; then
+              echo "App is healthy"
+              exit 0
+            fi
+            echo "Waiting for app... attempt $i/30 (status: ${STATUS:-unknown})"
+            sleep 2
+          done
+          echo "App did not become healthy within 60s"
+          exit 1
+
+      - name: Run Playwright E2E tests
+        run: npm run test:e2e
+        continue-on-error: false
+
+      - name: Upload Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload E2E CTRF report (always — for dog-food ingest)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-ctrf-report
+          path: e2e/ctrf/report.json
+          retention-days: 30
+
+      # Dog-food rule: POST the CTRF report to the staging CTRFHub instance.
+      # `continue-on-error: true` — staging outages must not block PR merges.
+      # CI-003 (Tugboat per-PR previews) will harden this step.
+      # Configure these repository variables/secrets to enable:
+      #   vars.CTRFHUB_STAGING_URL   — e.g. https://staging.ctrfhub.io
+      #   vars.CTRFHUB_PROJECT_SLUG  — e.g. ctrfhub-e2e
+      #   secrets.CTRFHUB_TOKEN      — project-scoped ctrf_* API token
+      - name: Ingest E2E CTRF report into CTRFHub staging (dog-food)
+        if: always() && vars.CTRFHUB_STAGING_URL != ''
+        continue-on-error: true
+        run: |
+          if [ ! -f e2e/ctrf/report.json ]; then
+            echo "No CTRF report found — skipping ingest (tests may have been skipped)"
+            exit 0
+          fi
+          curl -sf -X POST \
+            "${{ vars.CTRFHUB_STAGING_URL }}/api/v1/projects/${{ vars.CTRFHUB_PROJECT_SLUG }}/runs" \
+            -H "x-api-token: ${{ secrets.CTRFHUB_TOKEN }}" \
+            -H "content-type: application/json" \
+            -d @e2e/ctrf/report.json
+          echo "CTRF report ingested successfully"

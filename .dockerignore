@@ -1,0 +1,54 @@
+# CTRFHub — .dockerignore
+# Excludes files that don't belong in the Docker build context.
+# Every excluded directory/file reduces the context sent to the daemon,
+# speeding up builds and preventing accidental secret/credential inclusion.
+
+# Node.js build artefacts — rebuilt inside the container
+node_modules
+dist
+
+# Test files — not needed in the production image
+src/__tests__
+e2e
+
+# Documentation and planning — not runtime code
+docs
+.argos
+.antigravity
+
+# Version control
+.git
+.gitignore
+
+# Coverage reports
+coverage
+.nyc_output
+
+# Editor / IDE configs
+.vscode
+.idea
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Environment files (never bake secrets into the image)
+.env
+.env.*
+!.env.example
+
+# CI coordination files
+.claude-bridge
+
+# Local SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# TypeScript declaration maps (only needed in builder stage, not runner)
+# (These are copied via dist/ COPY, but excluding src avoids copying them twice)
+
+# Log files
+*.log
+npm-debug.log*

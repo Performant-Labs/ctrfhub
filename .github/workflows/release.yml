@@ -1,0 +1,151 @@
+# CTRFHub — Release Pipeline (GHCR publish on version tag)
+#
+# Triggered by: push of a tag matching `v*.*.*` (semver) or manual workflow_dispatch.
+# Publishes a multi-arch Docker image to ghcr.io/ctrfhub/ctrfhub:<tag> and :latest.
+#
+# Registry: GitHub Container Registry (GHCR).
+# Architectures: linux/amd64 + linux/arm64.
+#
+# Permissions:
+#   packages: write — required for GHCR push.
+#   contents: read  — read repository code.
+#
+# Usage:
+#   git tag v1.0.0 && git push origin v1.0.0
+#   → triggers this workflow → publishes ghcr.io/ctrfhub/ctrfhub:v1.0.0 + :latest
+#
+# Smoke test (dry-run, throwaway tag):
+#   git tag ci-001-smoke && git push origin ci-001-smoke
+#   → after verifying, delete: git push origin --delete ci-001-smoke
+#
+# Anti-patterns (per CI-001 brief):
+#   ✗ self-hosted runners
+#   ✗ mixing per-PR and release into one workflow
+#   ✗ hardcoded credentials (GITHUB_TOKEN is auto-generated per-job)
+#   ✗ floating base image tags (pinned to node:22-alpine digest preferred)
+#
+# @see docs/planning/architecture.md §Image build
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      # Also allow ad-hoc smoke-test tags like `ci-001-smoke`
+      - 'ci-*-smoke'
+  # Allow manual trigger for dry-run smoke tests from Actions UI
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v1.0.0 or ci-001-smoke)'
+        required: true
+        default: 'ci-001-smoke'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ctrfhub/ctrfhub
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # release — build and push multi-arch image to GHCR
+  # ---------------------------------------------------------------------------
+  release:
+    name: Build & Push Multi-Arch Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Determine the image tag:
+      # - On tag push: use the git tag (e.g. v1.0.0)
+      # - On workflow_dispatch: use the manually provided tag input
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            # Strip the 'refs/tags/' prefix
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${REGISTRY}/${IMAGE_NAME}:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Publishing tag: ${TAG}"
+
+      # Set up QEMU for multi-arch emulation (arm64 on amd64 runner)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # Set up Docker Buildx for multi-platform builds
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Authenticate to GHCR using the auto-generated GITHUB_TOKEN.
+      # No additional secrets required — GITHUB_TOKEN has `packages: write`
+      # when declared in permissions above.
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Extract Docker metadata (tags, labels) from GitHub context.
+      # Automatically generates:
+      #   - ghcr.io/ctrfhub/ctrfhub:<git-tag>
+      #   - ghcr.io/ctrfhub/ctrfhub:latest (only on semver tags, not smoke tags)
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Use the resolved tag from the previous step
+            type=raw,value=${{ steps.tag.outputs.tag }}
+            # Publish :latest only on real semver tags (not ci-*-smoke)
+            type=raw,value=latest,enable=${{ startsWith(steps.tag.outputs.tag, 'v') }}
+
+      # Build and push the multi-arch image.
+      # Cache is keyed to the registry itself so re-builds of the same tag
+      # reuse layers (e.g. when re-running a failed workflow).
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+      # Smoke-verify the published image
+      - name: Verify published image (docker pull + node -v)
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}"
+          # Pull and run node --version to confirm the correct Node.js version
+          docker pull "$IMAGE"
+          VERSION=$(docker run --rm "$IMAGE" node --version)
+          echo "Node.js version in image: $VERSION"
+          if [[ ! "$VERSION" =~ ^v22\. ]]; then
+            echo "ERROR: Expected Node.js 22.x, got $VERSION"
+            exit 1
+          fi
+          echo "✅ Image verified — Node.js $VERSION"
+
+      - name: Print image digest
+        run: |
+          echo "Published image:"
+          echo "  ${{ steps.meta.outputs.tags }}"
+          echo ""
+          echo "Pull with:"
+          echo "  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}"
