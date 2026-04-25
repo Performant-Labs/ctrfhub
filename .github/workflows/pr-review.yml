@@ -34,18 +34,32 @@ jobs:
       github.event.sender.type != 'Bot' &&
       (!github.event.pull_request.draft || github.event.issue.pull_request)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 20 min ceiling: 15 min was tight even after PR #8 + PR #9 cuts. The
+    # extra 5 min is a safety margin for transient model-provider latency,
+    # not a license for bigger PRs. If a review consumes >15 min steadily,
+    # investigate (over-large diff, model regression) instead of bumping
+    # this further.
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
+      # qodo-ai/pr-agent is pinned to a specific commit SHA rather than
+      # `@main` so a silent upstream perf regression (or behavior change)
+      # can't change CTRFHub's review behavior overnight. Bump intentionally
+      # by:
+      #   1. `gh api repos/qodo-ai/pr-agent/commits/main -q '.sha'`
+      #   2. update both `uses:` lines below (default + high-stakes)
+      #   3. open a PR; PR-Agent reviews itself with the new SHA
+      #   4. compare median wall-time / output quality before merge
+      # SHA captured 2026-04-25 — qodo-ai/pr-agent main HEAD.
       - name: PR-Agent review (default model — Kimi K2.6 Thinking via OpenRouter)
         id: review-default
         # If the PR is labelled `high-stakes`, skip this step — the high-stakes step below handles it with Opus 4.6.
         if: ${{ !contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
-        uses: qodo-ai/pr-agent@main
+        uses: qodo-ai/pr-agent@0e37fc84fcc8207561e64eef8f7f634fb57e8447  # was @main
         env:
           # OPENROUTER__KEY (double underscore) maps to OPENROUTER.KEY in PR-Agent's Dynaconf
           # settings, which is the only path that correctly wires litellm.api_key before the call.
@@ -57,7 +71,7 @@ jobs:
         id: review-highstakes
         # Triggered when the `high-stakes` label is present.
         if: ${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
-        uses: qodo-ai/pr-agent@main
+        uses: qodo-ai/pr-agent@0e37fc84fcc8207561e64eef8f7f634fb57e8447  # was @main
         env:
           OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
