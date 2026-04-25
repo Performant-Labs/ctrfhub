@@ -194,15 +194,16 @@ Follow `.antigravity/workflows/implementstory.md` exactly. The phases are:
 
 ---
 
-## Three-Tier Verification — Quick Reference
+## Verification Hierarchy — Quick Reference
 
-| Tier | Tool | Gate |
-|---|---|---|
-| T1 Headless | `fastify.inject()`, `curl` | Must pass before T2 |
-| T2 ARIA | `read_browser_page`, Playwright `accessibility.snapshot()` | Must pass before T3 |
-| T3 Visual | `browser_subagent` screenshot | Required for all UI stories |
+| Tier | Tool | When | Gate |
+|---|---|---|---|
+| T1 Headless | `fastify.inject()`, `curl`, `cheerio` | First-pass HTTP / HTML / structure | Must pass before T2 / T2.5 |
+| T2 ARIA | `read_browser_page`, Playwright `accessibility.snapshot()` | Unauthenticated routes (`/setup`, `/login`, `/forgot-password`, `/health`) | Must pass before T3 |
+| T2.5 Authenticated State | `~/.local/bin/browser-harness` (CDP into developer's Chrome) | Auth-gated routes — almost every UI past AUTH-001 (dashboard, run list, run detail, settings, AI, admin) | Must pass before T3 |
+| T3 Visual | `browser_subagent` screenshot | Final visual sign-off, UI stories only | Required after T2 / T2.5 green |
 
-One `browser_subagent` call = one design slice. Never full-page composite screenshots.
+T2 vs T2.5 is a function of auth posture, not a tier above one another — you run **either** T2 *or* T2.5 for a given story, never both. T2.5 pre-condition: developer logs into a running CTRFHub instance (local `npm run dev` or per-PR Tugboat preview) and leaves the Chrome tab active. Backdrop-contrast WCAG re-check applies to either structural tier. One `browser_subagent` call = one design slice; never full-page composite screenshots.
 
 ---
 

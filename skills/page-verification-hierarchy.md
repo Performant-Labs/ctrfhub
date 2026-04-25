@@ -1,13 +1,13 @@
 ---
 name: page-verification-hierarchy
-description: The Three-Tier Verification Hierarchy (T1 Headless → T2 Structural ARIA → T3 Visual) applied to CTRFHub's Fastify + HTMX + Eta stack — the "skeleton-first" workflow, the never-T3-before-T2 rule, and the backdrop-contrast WCAG re-check gate.
-trigger: verifying any rendered page (dashboard, run detail, settings, wizard step, login); choosing between curl / Playwright ARIA / screenshot for a verification step; reviewing a UI story in implementstory workflow; any layout-token or backdrop-affecting change
+description: The Verification Hierarchy (T1 Headless → T2 Structural ARIA / T2.5 Authenticated State → T3 Visual) applied to CTRFHub's Fastify + HTMX + Eta stack — the "skeleton-first" workflow, the never-T3-before-T2 rule, the browser-harness path for auth-gated routes, and the backdrop-contrast WCAG re-check gate.
+trigger: verifying any rendered page (dashboard, run detail, settings, wizard step, login); choosing between curl / Playwright ARIA / browser-harness / screenshot for a verification step; reviewing a UI story in implementstory workflow; any layout-token or backdrop-affecting change
 source: ~/Sites/ai_guidance/testing/verification-cookbook.md §all; docs/planning/testing-strategy.md §Three-Tier Verification; docs/planning/architecture.md §Frontend; ~/Sites/ai_guidance/testing/visual-regression-strategy.md §all
 ---
 
 ## Rule
 
-Always use the fastest tier that provides sufficient structural confirmation before escalating: **T1 Headless** (Fastify `inject()`, `curl`, `cheerio`) for HTTP status and server-rendered HTML/DOM presence (1–5 s); **T2 Structural ARIA** (Playwright `accessibility.snapshot()` / `read_browser_page`) for heading hierarchy, landmarks, and interactive-element presence (5–10 s); **T3 Visual** (`browser_subagent` screenshots, pixel diff) for final visual regression only (60–90 s). **T3 never runs before T2 is green.** Layout-token or backdrop-affecting changes require a numeric WCAG contrast re-check at T2 before any T3 screenshot.
+Always use the fastest tier that provides sufficient structural confirmation before escalating: **T1 Headless** (Fastify `inject()`, `curl`, `cheerio`) for HTTP status and server-rendered HTML/DOM presence (1–5 s); **T2 Structural ARIA** (Playwright `accessibility.snapshot()` / `read_browser_page`) for heading hierarchy, landmarks, and interactive-element presence on **unauthenticated** routes (5–10 s); **T2.5 Authenticated State** (`~/.local/bin/browser-harness` over CDP into the developer's daily-driver Chrome) for the same structural checks on **authenticated** routes (5–10 s); **T3 Visual** (`browser_subagent` screenshots, pixel diff) for final visual regression only (60–90 s). **T3 never runs before the structural tier (T2 or T2.5) is green.** Layout-token or backdrop-affecting changes require a numeric WCAG contrast re-check before any T3 screenshot.
 
 ## Why
 
@@ -15,7 +15,9 @@ Verification-tier escalation protects velocity. An ARIA snapshot is ~10 KB; a 12
 
 The skeleton-first order also prevents a failure mode unique to dark-themed apps with layout-token knobs: a screenshot can *look* readable at thumbnail resolution while the underlying contrast ratio is failing WCAG AA. T3 is a vision-token channel; accessibility is a numeric property. Measure it numerically. CTRFHub ships dark-mode-only (`tailwind-4-flowbite-dark-only.md`), so every surface is one backdrop token away from dropping below 4.5:1 body contrast.
 
-This skill is the page-verification companion to `vitest-three-layer-testing.md`. The two hierarchies are orthogonal: Vitest's three layers (unit / integration / E2E) partition **where the code runs**; the three tiers here partition **what fidelity you verify a rendered page at**. A single E2E test can and should exercise T1 → T2 → T3 in sequence against the same route.
+T2 vs T2.5 is purely a question of **whether the route is auth-gated**. Almost every CTRFHub story past AUTH-001 (dashboard, run list, run detail, settings, AI feature panels, admin) lives behind a session cookie. A clean-room Playwright/`read_browser_page` instance lands on those routes with no auth and gets bounced to `/login`. Writing a login fixture inside every interactive verification call is duplicative of the test-time fixtures we already use in CI; T2.5 lets the developer log in once via Chrome and skip that scaffolding for development-time verification. CI tests still use Playwright + `buildApp({ testing: true })` fixture-user injection — that's the *automated* lane. T2.5 is the *interactive* lane.
+
+This skill is the page-verification companion to `vitest-three-layer-testing.md`. The two hierarchies are orthogonal: Vitest's three layers (unit / integration / E2E) partition **where the code runs**; the four tiers here partition **what fidelity you verify a rendered page at**. A single E2E test can and should exercise T1 → T2 → T3 in sequence against the same route.
 
 ## How to apply
 
@@ -112,6 +114,8 @@ In Cowork / interactive agent contexts, `read_browser_page` returns the same ARI
 | Login (AUTH-003) | `h1` "Sign in"; email/password inputs labeled; submit is `button[type=submit]`; error messages have `role="alert"` |
 | Settings pages (SET-001/002/003) | Tab container has `role="tablist"`; each tab panel `role="tabpanel"`; autosave "✓ Saved" has `role="status"` |
 
+**Why this tier exists despite a small CTRFHub footprint.** In CTRFHub, T2 covers only `/setup`, `/login`, `/forgot-password`, and `/health` — at most a handful of routes, mostly tied to AUTH-002 / AUTH-003. After those stories ship, T2 mostly goes dormant. We keep it as a distinct tier (rather than collapsing into T2.5) because (a) the upstream cookbook at `~/Sites/ai_guidance/testing/verification-cookbook.md` treats T2 as canonical and divergence creates ongoing translation cost, (b) AUTH-002's HTMX/Alpine-driven multi-step setup wizard genuinely benefits from a tool that catches dynamic structural state — `aria-current="step"`, progress-indicator updates — that T1 cheerio cannot see, and (c) for the few unauthenticated routes T2 covers, the agent can use clean-room tools (`read_browser_page`, `browser_subagent`) autonomously without requiring the developer to keep a Chrome tab active. If we ever want to simplify, propose the change upstream in the cookbook first.
+
 ### T2 — Backdrop-contrast WCAG re-check (blocking gate before T3)
 
 Any diff that moves an element's backdrop requires a **numeric** contrast pass at T2. Do not proceed to T3 screenshots until this is green.
@@ -169,9 +173,56 @@ expect(ratio).toBeGreaterThanOrEqual(4.5);
 - [ ] Contrast ratio ≥ 4.5:1 for body, ≥ 3.0:1 for large text (WCAG AA).
 - [ ] If the ratio fails, adjust the token (light↔dark direction depends on the new backdrop) and re-check. **Do not take the screenshot until it passes.**
 
+### T2.5 — Authenticated State Verification (browser-harness)
+
+Use for any route that requires a logged-in session — i.e. every CTRFHub route past `AUTH-001` except `/setup`, `/login`, `/forgot-password`, and `/health`. That covers the dashboard (`/`), run list (`/runs`), run detail (`/runs/:id`), all settings tabs (`/settings/*`, `/org/settings/*`, `/projects/:id/settings`), admin pages (`/admin/*`), and the AI feature panels inside Run Detail.
+
+**Why a separate tier.** T2's clean-room browser (`read_browser_page`, `browser_subagent`, fresh Playwright contexts) lands on the route with no session cookie and gets bounced to `/login`. Writing a Playwright login fixture inside every interactive verification call is duplicative of the test-time fixtures `buildApp({ testing: true })` already provides for CI — and you'd run that scaffold 50 times during authoring. T2.5 sidesteps it: log in once via your daily-driver Chrome; the harness attaches to that already-authenticated tab over CDP and reads the same ARIA tree T2 would, only on a real session.
+
+**Pre-condition (developer-side).** Open Chrome, navigate to the route under test on a running CTRFHub instance, log in if needed, leave the tab active. Two recipes for "running instance":
+
+1. **Local dev server** — `npm run dev` against `http://localhost:3000`. Fast feedback during initial assembly.
+2. **Per-PR Tugboat preview** (once `CI-003` ships per `project-architecture.md` checklist item 30) — a stable URL like `pr-N.<your-tugboat-subdomain>.tugboatqa.com` that runs the actual CI build with realistic seeded data. Better near merge because it exercises the same artifact the production deployment will use.
+
+**Method (agent-side).** Run via `Bash`:
+
+```bash
+~/.local/bin/browser-harness <<'EOF'
+# Daemon is connected; helpers pre-imported.
+ensure_real_tab()
+print(page_info())
+print(get_accessibility_tree())
+EOF
+```
+
+`ensure_real_tab()` errors out if the active tab isn't a CTRFHub page — this prevents you from accidentally reading the ARIA tree of a Slack window or a New Tab and reporting it as a CTRFHub route's verdict. `page_info()` reports URL, title, viewport. `get_accessibility_tree()` returns the ARIA structure — the same data T2 reads, just from the authenticated session.
+
+**Same gates as T2.** Once you have the ARIA tree, the structural assertions are identical:
+
+| # | Assertion | Examples |
+|---|---|---|
+| 1 | `h1` present with correct title | "Dashboard", "Run #123", "Org Settings" |
+| 2 | Required landmarks | One `main`, one `navigation`, no duplicates |
+| 3 | Every interactive control has an accessible name | Buttons, links, form inputs |
+| 4 | ARIA roles match the visual semantics | `role="tablist"` for settings tabs, `role="dialog"` for Flowbite modals |
+
+**Backdrop-contrast WCAG re-check still applies at T2.5.** If the diff under review touches any layout token, backdrop, `[data-theme]` zone, or `@layer components` surface, run the same numeric ratio computation from §T2 — Backdrop-contrast against the authenticated page. The harness can execute arbitrary JS via the CDP `Runtime.evaluate` primitive; the contrast computation lives there. (Same trigger conditions, same gates, same ≥ 4.5:1 / ≥ 3.0:1 thresholds.)
+
+**Anti-pattern: writing a login fixture inside the harness call.** The harness exists *because* you don't have to script login. If you find yourself doing `page.fill('#email', ...)` etc. inside an `EOF` block, stop — log in by hand in Chrome and re-run.
+
+**What T2.5 does NOT replace:**
+
+- **Playwright CI tests** stay the canonical E2E lane. They use `buildApp({ testing: true })` to inject a fixture user, generate CTRF reports, and run deterministically in `ubuntu-latest`. T2.5 is the *interactive verification* lane during development; CI is the *automated* lane.
+- **T1 Headless** still owns unauthenticated server-side checks (HTTP status, partial-vs-full-page branching, route presence). T1 is faster than T2.5 by an order of magnitude and doesn't need a browser at all.
+- **T3 Visual** for pixel-level sign-off. T2.5 reads structure; T3 reads pixels.
+
+**Verdict gate:** PASS or FAIL. FAIL halts the tier ladder; do not proceed to T3 visual sign-off until T2.5 (or T2 if the route is unauthenticated) passes.
+
+**Why this tier exists despite Playwright fixtures being available.** `buildApp({ testing: true })` injects fixture users for CI tests — that's the *automated* regression lane and it's not going anywhere. T2.5 fills a different niche: structured ARIA-tree extraction on authenticated pages during *interactive* development, where writing a Playwright login fixture for every verification call would defeat the 5–10s skeleton-first loop. The test-writer agent has no other path to read an authenticated page's accessibility tree — `read_browser_page` and `browser_subagent` land in clean-room contexts that get bounced to `/login`. T2.5 is specifically the "I'm iterating on a UI and want the agent to confirm the structure *right now*" path; CI Playwright remains canonical for regression. Both lanes coexist; neither replaces the other.
+
 ### T3 — Visual (Playwright screenshots / browser_subagent)
 
-Reserve for visual sign-off after T1 and T2 are green.
+Reserve for visual sign-off after T1 and T2 / T2.5 are green.
 
 - **Use cases:** dark-surface palette, Flowbite component fidelity, stat-tile proportions, chart rendering, run-card grid, modal appearance.
 - **Scope rule:** one screenshot per design slice. Never full-page composites that span multiple components.

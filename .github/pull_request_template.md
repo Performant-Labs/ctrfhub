@@ -39,13 +39,16 @@ Story: `<taskId>` (from `docs/planning/tasks.md`)
 
 ## Page verification tiers
 
+T2 *and* T2.5 are mutually exclusive — fill the row that matched the route's auth posture; mark the other N/A.
+
 | Tier | Declared | Result | Notes |
 |---|---|---|---|
 | T1 Headless | <yes/no> | <pass/fail/N/A> | |
-| T2 ARIA | <yes/no> | <pass/fail/N/A> | |
+| T2 ARIA (clean room — unauthenticated routes) | <yes/no> | <pass/fail/N/A> | |
+| T2.5 Authenticated State (browser-harness) | <yes/no> | <pass/fail/N/A> | |
 | T3 Visual | <yes/no/N/A> | <pass/fail/N/A> | |
 
-<!-- For T2: if this PR changes a layout token, backdrop, [data-theme] zone, or background, include the numeric WCAG contrast ratio per skills/page-verification-hierarchy.md §Backdrop-contrast WCAG re-check. -->
+<!-- For T2 / T2.5: if this PR changes a layout token, backdrop, [data-theme] zone, or background, include the numeric WCAG contrast ratio per skills/page-verification-hierarchy.md §Backdrop-contrast WCAG re-check. -->
 
 ## Decisions that deviate from spec
 
