@@ -97,15 +97,29 @@ publish_output_progress = false
 
 [github_action_config]
 # auto_review (= true by default) keeps the spec-enforcer pass firing on every
-# opened/synchronize event. We turn auto_improve OFF: it was a second full
-# model round-trip producing /improve-style suggestions that overlapped with
-# the reviewer's inline comments, contributing meaningfully to the wall-time
-# pressure that timed out PR #7's review at 15 min. Manual `/improve` from a
-# PR comment still works for the rare case it adds value.
+# pr-action event in `pr_actions` (see below). We turn auto_improve OFF: it
+# was a second full model round-trip producing /improve-style suggestions that
+# overlapped with the reviewer's inline comments, contributing meaningfully
+# to the wall-time pressure that timed out PR #7's review at 15 min. Manual
+# `/improve` from a PR comment still works for the rare case it adds value.
 # auto_describe (= true by default) is left as-is — its run is short and its
 # output (spec-aware PR description rewrite) is genuinely useful.
 auto_review = true
 auto_improve = false
+
+# pr_actions explicitly includes "synchronize" so amends and rebases get a
+# fresh review. PR-Agent's default omits synchronize, which silently skips
+# the review on every force-push (observed: 6-second pr-agent steps that
+# return success without producing any review content — see PR #7's rebase,
+# PR #9's amend, PR #11's later runs, and PR #12's first force-push). The
+# default ["opened", "reopened", "ready_for_review", "review_requested"]
+# means the very first review on a PR fires correctly, but every subsequent
+# push is a silent no-op. Without "synchronize" here, every rebase requires
+# a manual `/review` comment to actually re-evaluate the diff.
+#
+# Source verified at qodo-ai/pr-agent@0e37fc8 in
+# pr_agent/servers/github_action_runner.py L112.
+pr_actions = ["opened", "reopened", "ready_for_review", "review_requested", "synchronize"]
 
 [litellm]
 # Let LiteLLM retry on transient failures before falling back
