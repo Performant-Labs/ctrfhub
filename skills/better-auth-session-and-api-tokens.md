@@ -27,7 +27,7 @@ CSRF protection is by design absent: Better Auth issues `SameSite=Lax` cookies; 
 2. Check `config.skipAuth` → skip auth for `/setup`, `/health`, `/api/auth/*`, static assets.
 3. Check `x-api-token: ctrf_*` → validate with `auth.api.verifyApiKey()`.
 4. Check Better Auth session cookie → validate with `auth.api.getSession()`.
-5. If HTMX request and unauthenticated → set `HX-Redirect: /login` header + 401.
+5. If HTMX request and unauthenticated → set `HX-Redirect: /login` header + 200 (not 401) so HTMX consumes `HX-Redirect` cleanly without `hx-on::after-request` handling.
 6. Otherwise → redirect to `/login`.
 
 ### Project-scoped API tokens:

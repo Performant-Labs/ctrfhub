@@ -284,6 +284,20 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     app.log.error({ err }, 'Migration failed — process will exit');
     throw err;
   }
+
+  // Run Better Auth schema migrations (user, session, account, verification,
+  // apikey tables). `runMigrations()` is idempotent — safe to call on every
+  // startup; a no-op when tables already exist.
+  // This is the production path that mirrors what `seedAuthSchema()` does in
+  // integration tests, hoisted here so a fresh DB Just Works.
+  try {
+    const authCtx = await auth.$context;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (authCtx as any).runMigrations();
+  } catch (err) {
+    app.log.error({ err }, 'Better Auth migration failed — process will exit');
+    throw err;
+  }
   currentBootState = 'ready';
 
   // Register ORM cleanup on shutdown
@@ -325,9 +339,9 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
    * Precedence (per `better-auth-session-and-api-tokens.md`):
    *   1. Empty-users redirect to /setup
    *   2. skipAuth bypass
-   *   3. Bearer API key (ctrf_*) validation
+   *   3. `x-api-token` API key (ctrf_*) validation
    *   4. Session cookie validation
-   *   5. HTMX 401 with HX-Redirect: /login
+   *   5. HTMX 200 with HX-Redirect: /login
    *
    * In this story (INFRA-002), all branches are stubbed — the hook exists
    * so AUTH-001 only has to fill in the body of each branch, never
@@ -407,13 +421,13 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       return;
     }
 
-    // ── Branch 5: Unauthenticated — HTMX 401 or browser redirect ──
+    // ── Branch 5: Unauthenticated — HTMX 200 with HX-Redirect or browser redirect ──
     // No auth resolved. HTMX clients need a 200-with-HX-Redirect (NOT 401)
     // because HTMX only processes response headers on 2xx responses by default.
     // Browser clients get a standard 302 redirect.
     if (request.headers['hx-request']) {
       reply.header('HX-Redirect', '/login');
-      return reply.status(401).send();
+      return reply.status(200).send();
     }
     return reply.redirect('/login');
   });
