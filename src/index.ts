@@ -1,13 +1,35 @@
 /**
  * CTRFHub — Application entry point.
  *
- * This file is the main entry point for the application. The actual
- * Fastify app factory (`buildApp()`) will be created in INFRA-002.
- * For now this is a placeholder that satisfies `tsc --noEmit`.
+ * Bootstraps the Fastify server by calling the `buildApp()` factory,
+ * then listens on `PORT` (env var, default 3000).
  *
- * @see docs/planning/tasks.md §INFRA-002 for the app factory story
+ * Process signal handlers (SIGTERM/SIGINT) are registered inside
+ * `buildApp()` for graceful shutdown — see `src/app.ts §11`.
+ *
+ * @see src/app.ts — buildApp() factory
+ * @see docs/planning/architecture.md §Graceful Shutdown
  */
 
-// Placeholder — INFRA-002 will add the real app bootstrap here.
-// eslint-disable-next-line no-console
-console.log('CTRFHub starting… (scaffold only — no app factory yet)');
+import { buildApp } from './app.js';
+
+const PORT = Number(process.env['PORT'] ?? 3000);
+const HOST = process.env['HOST'] ?? '0.0.0.0';
+
+async function main(): Promise<void> {
+  const app = await buildApp();
+
+  try {
+    await app.listen({ port: PORT, host: HOST });
+    app.log.info(`CTRFHub listening on ${HOST}:${PORT}`);
+  } catch (err) {
+    app.log.error(err, 'Failed to start server');
+    process.exit(1);
+  }
+}
+
+main().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error('Unhandled error during startup:', err);
+  process.exit(1);
+});
