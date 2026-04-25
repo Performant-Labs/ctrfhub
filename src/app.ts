@@ -41,12 +41,15 @@ import { Eta } from 'eta';
 import { MikroORM } from '@mikro-orm/core';
 import { fromNodeHeaders } from 'better-auth/node';
 
+import fastifyMultipart from '@fastify/multipart';
 import type { AppOptions } from './types.js';
 import type { BootState } from './modules/health/schemas.js';
 import { HealthResponseSchema } from './modules/health/schemas.js';
 import { buildAuth } from './auth.js';
 import { User } from './entities/index.js';
 import { registerAuthRoutes } from './modules/auth/routes.js';
+import ingestPlugin from './modules/ingest/routes.js';
+import { MemoryEventBus } from './services/event-bus.js';
 
 // ---------------------------------------------------------------------------
 // Module-private: resolve __dirname for ESM (needed by @fastify/static root)
@@ -308,12 +311,14 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   // -----------------------------------------------------------------------
   // 8. DI seam cleanup on shutdown (event bus, artifact storage, AI provider)
   // -----------------------------------------------------------------------
-  if (options.eventBus) {
-    app.decorate('eventBus', options.eventBus);
-    app.addHook('onClose', async () => {
-      await options.eventBus!.close();
-    });
-  }
+
+  // EventBus — always present. Tests inject via `options.eventBus`;
+  // production/dev falls back to an in-process MemoryEventBus.
+  const eventBus = options.eventBus ?? new MemoryEventBus();
+  app.decorate('eventBus', eventBus);
+  app.addHook('onClose', async () => {
+    await eventBus.close();
+  });
 
   if (options.artifactStorage) {
     app.decorate('artifactStorage', options.artifactStorage);
@@ -498,6 +503,19 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   // 10b. Register Better Auth `/api/auth/*` catch-all route
   // -----------------------------------------------------------------------
   await registerAuthRoutes(app, auth);
+
+  // -----------------------------------------------------------------------
+  // 10c. Register @fastify/multipart (required for CTRF multipart ingest)
+  // -----------------------------------------------------------------------
+  await app.register(fastifyMultipart, {
+    // Don't attach files to body — we iterate parts manually in the route
+    attachFieldsToBody: false,
+  });
+
+  // -----------------------------------------------------------------------
+  // 10d. Register CTRF ingest route plugin
+  // -----------------------------------------------------------------------
+  await app.register(ingestPlugin);
 
   // -----------------------------------------------------------------------
   // 11. Process signal handlers (production only — tests manage lifecycle)

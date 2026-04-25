@@ -24,14 +24,14 @@ export interface ArtifactStorage {
 /**
  * Event bus abstraction for inter-service communication.
  *
- * Used by the AI pipeline (A1–A3 stages subscribe to `run.ingested`,
- * `run.ai_categorized`, `run.ai_correlated`) and SSE push notifications.
- * The real implementation and `MemoryEventBus` double ship in INFRA-004.
+ * The canonical interface and `MemoryEventBus` implementation live in
+ * `src/services/event-bus.ts`. Imported and re-exported here so existing
+ * imports from `./types.js` continue to work.
+ *
+ * @see src/services/event-bus.ts
  */
-export interface EventBus {
-  /** Drain pending events and release connections. */
-  close(): Promise<void>;
-}
+import type { EventBus } from './services/event-bus.js';
+export type { EventBus };
 
 /**
  * AI provider abstraction for failure categorization and summarization.

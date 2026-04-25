@@ -19,9 +19,10 @@ import { Project } from './entities/Project.js';
 import { TestRun } from './entities/TestRun.js';
 import { TestResult } from './entities/TestResult.js';
 import { TestArtifact } from './entities/TestArtifact.js';
+import { IngestIdempotencyKey } from './entities/IngestIdempotencyKey.js';
 
 export default defineConfig({
-  entities: [Organization, User, Project, TestRun, TestResult, TestArtifact],
+  entities: [Organization, User, Project, TestRun, TestResult, TestArtifact, IngestIdempotencyKey],
 
   /** SQLite migrations live in their own directory */
   migrations: {

@@ -16,3 +16,4 @@ export { Project, ProjectSchema } from './Project.js';
 export { TestRun, TestRunSchema } from './TestRun.js';
 export { TestResult, TestResultSchema } from './TestResult.js';
 export { TestArtifact, TestArtifactSchema } from './TestArtifact.js';
+export { IngestIdempotencyKey, IngestIdempotencyKeySchema } from './IngestIdempotencyKey.js';
