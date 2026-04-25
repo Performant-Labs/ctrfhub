@@ -88,7 +88,7 @@ export CTRFHUB_DIR="$HOME/code/ctrfhub"
 
 | Path | Default model | Config location | How to override |
 |---|---|---|---|
-| PR-Agent (cloud) | `openrouter/moonshotai/kimi-k2-thinking` | `.pr_agent.toml` → `[config] model` | Edit that line, or apply the `high-stakes` label to a PR for Opus 4.6 |
+| PR-Agent (cloud) | `openrouter/moonshotai/kimi-k2.6` | `.pr_agent.toml` → `[config] model` | Edit that line, or apply the `high-stakes` label to a PR for Opus 4.6 |
 | Argos (local) | `claude-opus-4-7` | `pr-review.sh` → `ARGOS_MODEL` fallback | Per-call: `--model <name>` · Session-wide: `export ARGOS_MODEL=<name>` in your profile |
 
 ### Readiness check

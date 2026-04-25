@@ -28,7 +28,7 @@ How to wire up **Qodo PR-Agent** as the automated Spec-enforcer for CTRFHub pull
 1. Sign in at <https://openrouter.ai>.
 2. Create a key: <https://openrouter.ai/keys>.
 3. Fund the key — $10 covers several hundred reviews at the default model.
-4. Confirm current model IDs at <https://openrouter.ai/models>. Specifically verify that **Kimi K2.6 Thinking** is still reachable at `moonshotai/kimi-k2-thinking` — if the ID has drifted (e.g., `moonshotai/kimi-k2-0929`), update both `.pr_agent.toml` and `.github/workflows/pr-review.yml` accordingly.
+4. Confirm current model IDs at <https://openrouter.ai/models>. Specifically verify that **Kimi K2.6** is reachable at `moonshotai/kimi-k2.6` (the unversioned alias for the K2.6 family — currently snapshotted at `moonshotai/kimi-k2.6-20260420`). If the alias has been dropped, update `.pr_agent.toml` and `.github/workflows/pr-review.yml` to the explicit dated form. If a newer family ships (K2.7+), update the alias name in those same two files.
 
 ### 2. Add repository secrets
 
@@ -163,7 +163,7 @@ The workflow uses LiteLLM under the hood (via PR-Agent), which supports 100+ pro
 
 | Destination | `model =` value | Secret needed |
 |---|---|---|
-| Kimi K2.6 via OpenRouter (current default) | `openrouter/moonshotai/kimi-k2-thinking` | `OPENROUTER_API_KEY` |
+| Kimi K2.6 via OpenRouter (current default) | `openrouter/moonshotai/kimi-k2.6` | `OPENROUTER_API_KEY` |
 | DeepSeek V3.2 direct | `deepseek/deepseek-chat` | `DEEPSEEK_API_KEY` |
 | Anthropic Opus 4.6 direct | `anthropic/claude-opus-4-6` | `ANTHROPIC_API_KEY` |
 | Local Ollama (requires self-hosted GHA runner) | `ollama/qwen3:72b-instruct` + set `OLLAMA_API_BASE=http://localhost:11434` | none (runner must reach the Ollama server) |
