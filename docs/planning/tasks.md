@@ -322,7 +322,7 @@ Status key:
 **Page verification tiers:** none
 **Critical test paths:** `unit` → `integration` → `e2e` jobs run sequentially; E2E job ingests its own CTRF report to staging CTRFHub (dog-food rule); Docker multi-stage build (`builder` → `runner`); `lint` job runs `tsc --noEmit` + ESLint; `release` job on tag pushes multi-arch image to `ghcr.io/ctrfhub/ctrfhub`
 **Acceptance:** `.github/workflows/ci.yml` with: `unit` job → `integration` job (sequential) → `e2e` job (needs integration) → ingest E2E CTRF report to staging CTRFHub; Docker multi-stage build (`builder` → `runner`); `lint` job (`tsc --noEmit` + `eslint`); `release` job on tag (multi-arch Docker push to `ghcr.io/ctrfhub/ctrfhub`).
-- [/] CI-001
+- [x] CI-001
 
 ---
 
