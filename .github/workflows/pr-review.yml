@@ -62,7 +62,7 @@ jobs:
           OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONFIG.MODEL: "openrouter/anthropic/claude-opus-4.6"
-          CONFIG.FALLBACK_MODELS: '["openrouter/moonshotai/kimi-k2-thinking"]'
+          CONFIG.FALLBACK_MODELS: '["openrouter/moonshotai/kimi-k2.6"]'
 
       - name: Stamp review with model attribution
         if: always()
@@ -79,7 +79,7 @@ jobs:
           if [[ "${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}" == "true" ]]; then
             MODEL="openrouter/anthropic/claude-opus-4.6"
           else
-            MODEL="openrouter/moonshotai/kimi-k2-thinking"
+            MODEL="openrouter/moonshotai/kimi-k2.6"
           fi
 
           # Team-local timezone (auto-switches PDT↔PST) plus UTC for

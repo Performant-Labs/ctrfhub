@@ -8,10 +8,13 @@
 # Override per-PR: add the `high-stakes` label to force Opus 4.6 primary (see .github/workflows/pr-review.yml).
 
 [config]
-# Model IDs verified against https://openrouter.ai/api/v1/models 2026-04-23
+# Model IDs verified against https://openrouter.ai/api/v1/models 2026-04-25
 # Auth: OPENAI_API_KEY=<openrouter_key> + OPENAI_API_BASE=https://openrouter.ai/api/v1
 # Model names use vendor/model format (no openrouter/ prefix needed with API base override).
-model = "openrouter/moonshotai/kimi-k2-thinking"
+# Kimi K2.6 was released on 2026-04-20 (catalog ID `moonshotai/kimi-k2.6-20260420`).
+# We use the unversioned alias so we follow the K2.6 family forward without locking
+# to a snapshot. If OpenRouter ever drops the unversioned alias, switch to the dated form.
+model = "openrouter/moonshotai/kimi-k2.6"
 fallback_models = ["openrouter/anthropic/claude-opus-4.6"]
 verbosity_level = 1
 # Don't truncate our skills/ context — reviews need the full spec context loaded
