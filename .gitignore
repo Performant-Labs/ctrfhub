@@ -125,6 +125,15 @@ dist
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
 
+# IDE / editor local state — per-developer workspace settings, never committed
+.vscode/
+.idea/
+
+# Claude Code per-workspace local state — per-developer settings/scratchpad,
+# never committed (distinct from .claude-bridge/ further down, which is the
+# sandbox↔Mac protocol spool used by Argos)
+.claude/
+
 # yarn v3
 .pnp.*
 .yarn/*
