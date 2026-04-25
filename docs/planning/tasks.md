@@ -333,7 +333,7 @@ Status key:
 **Page verification tiers:** none
 **Critical test paths:** `compose.dev.yml` runs with `tsx watch` + Tailwind `--watch` + Postgres; `compose.yml` runs prod with `ghcr.io` image + Postgres volume + `stop_grace_period: 30s`; `compose.sqlite.yml` single-container with SQLite; `.env.example` covers every env var named in `architecture.md §Environment variables`; compose `healthcheck` hits `/health`
 **Acceptance:** `compose.dev.yml` (app with `tsx watch`, Tailwind `--watch`, Postgres); `compose.yml` (prod, ghcr.io image, Postgres named volume, `stop_grace_period: 30s`); `compose.sqlite.yml` (single container, SQLite); `.env.example` with all env vars from `architecture.md §Environment variables`; `healthcheck` in compose uses `/health` endpoint.
-- [ ] CI-002
+- [/] CI-002
 
 ---
 
