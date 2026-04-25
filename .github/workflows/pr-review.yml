@@ -8,6 +8,25 @@ on:
     # in .pr_agent.toml means the review comment is updated in place rather
     # than duplicated on every run.
     types: [opened, reopened, ready_for_review, synchronize]
+    # Skip the workflow entirely when ALL changed files match these patterns.
+    # GitHub Actions semantics: a PR triggers the workflow only if at least
+    # one changed file does NOT match paths-ignore. So docs-only / scratchpad-
+    # only PRs (e.g., committing .argos/ coordination history, README typos,
+    # planning-doc tweaks) skip pr-agent entirely — saving ~3-8 min wall time
+    # for PRs where the model has nothing useful to say. Mixed PRs (docs +
+    # any code or config) still trigger normally.
+    #
+    # Manual /review via PR comment ALWAYS works — issue_comment events below
+    # are not affected by paths-ignore.
+    paths-ignore:
+      - '.argos/**'
+      - 'docs/**'
+      - 'skills/**'
+      - '**/*.md'
+      - '.gitignore'
+      - '.nvmrc'
+      - '.vscode/**'
+      - '.idea/**'
   issue_comment:
     types: [created]   # enables /review, /describe, /improve slash commands
 
