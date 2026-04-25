@@ -800,6 +800,290 @@ describe('CtrfReportSchema — edge cases', () => {
 });
 
 // ---------------------------------------------------------------------------
+// CtrfReportSchema — strict mode for sub-schemas (G1)
+// ---------------------------------------------------------------------------
+
+describe('CtrfReportSchema — strict mode for sub-schemas', () => {
+  it('rejects unknown properties in environment', () => {
+    const report = buildMinimalReport();
+    const result = CtrfReportSchema.safeParse({
+      ...report,
+      results: {
+        ...report.results,
+        environment: { badProp: true },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown properties in report-level insights', () => {
+    const result = CtrfReportSchema.safeParse(
+      buildMinimalReport({ insights: { badProp: true } }),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown properties in baseline', () => {
+    const result = CtrfReportSchema.safeParse(
+      buildMinimalReport({
+        baseline: {
+          reportId: '550e8400-e29b-41d4-a716-446655440000',
+          badProp: true,
+        },
+      }),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown properties in retryAttempt', () => {
+    const report = buildMinimalReport();
+    const result = CtrfReportSchema.safeParse({
+      ...report,
+      results: {
+        ...report.results,
+        tests: [
+          {
+            name: 'test',
+            status: 'passed',
+            duration: 100,
+            retryAttempts: [{ attempt: 1, status: 'passed', badProp: true }],
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown properties in step', () => {
+    const report = buildMinimalReport();
+    const result = CtrfReportSchema.safeParse({
+      ...report,
+      results: {
+        ...report.results,
+        tests: [
+          {
+            name: 'test',
+            status: 'passed',
+            duration: 100,
+            steps: [{ name: 'step1', status: 'passed', badProp: true }],
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown properties in attachment', () => {
+    const report = buildMinimalReport();
+    const result = CtrfReportSchema.safeParse({
+      ...report,
+      results: {
+        ...report.results,
+        tests: [
+          {
+            name: 'test',
+            status: 'passed',
+            duration: 100,
+            attachments: [
+              {
+                name: 'file.png',
+                contentType: 'image/png',
+                path: '/tmp/file.png',
+                badProp: true,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CtrfReportSchema — attachment required fields (G2)
+// ---------------------------------------------------------------------------
+
+describe('CtrfReportSchema — attachment required fields', () => {
+  const requiredAttachmentFields = ['name', 'contentType', 'path'] as const;
+
+  it.each(requiredAttachmentFields)(
+    'rejects attachment missing required field "%s"',
+    (field) => {
+      const attachment: Record<string, string> = {
+        name: 'file.png',
+        contentType: 'image/png',
+        path: '/tmp/file.png',
+      };
+      delete attachment[field];
+      const report = buildMinimalReport();
+      const result = CtrfReportSchema.safeParse({
+        ...report,
+        results: {
+          ...report.results,
+          tests: [
+            {
+              name: 'test',
+              status: 'passed',
+              duration: 100,
+              attachments: [attachment],
+            },
+          ],
+        },
+      });
+      expect(result.success).toBe(false);
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// CtrfReportSchema — retryAttempt required fields (G3)
+// ---------------------------------------------------------------------------
+
+describe('CtrfReportSchema — retryAttempt required fields', () => {
+  it('rejects retryAttempt missing required field "attempt"', () => {
+    const report = buildMinimalReport();
+    const result = CtrfReportSchema.safeParse({
+      ...report,
+      results: {
+        ...report.results,
+        tests: [
+          {
+            name: 'test',
+            status: 'passed',
+            duration: 100,
+            retryAttempts: [{ status: 'passed' }],
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects retryAttempt missing required field "status"', () => {
+    const report = buildMinimalReport();
+    const result = CtrfReportSchema.safeParse({
+      ...report,
+      results: {
+        ...report.results,
+        tests: [
+          {
+            name: 'test',
+            status: 'passed',
+            duration: 100,
+            retryAttempts: [{ attempt: 1 }],
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CtrfReportSchema — step required fields (G4)
+// ---------------------------------------------------------------------------
+
+describe('CtrfReportSchema — step required fields', () => {
+  it('rejects step missing required field "name"', () => {
+    const report = buildMinimalReport();
+    const result = CtrfReportSchema.safeParse({
+      ...report,
+      results: {
+        ...report.results,
+        tests: [
+          {
+            name: 'test',
+            status: 'passed',
+            duration: 100,
+            steps: [{ status: 'passed' }],
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects step missing required field "status"', () => {
+    const report = buildMinimalReport();
+    const result = CtrfReportSchema.safeParse({
+      ...report,
+      results: {
+        ...report.results,
+        tests: [
+          {
+            name: 'test',
+            status: 'passed',
+            duration: 100,
+            steps: [{ name: 'step1' }],
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CtrfReportSchema — baseline required field (G5)
+// ---------------------------------------------------------------------------
+
+describe('CtrfReportSchema — baseline required field', () => {
+  it('rejects baseline missing required field "reportId"', () => {
+    const result = CtrfReportSchema.safeParse(
+      buildMinimalReport({
+        baseline: { source: 'main-branch' },
+      }),
+    );
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CtrfReportSchema — format validation (G6, G7, G8)
+// ---------------------------------------------------------------------------
+
+describe('CtrfReportSchema — format validation', () => {
+  it('rejects non-URL baseline.buildUrl (G6)', () => {
+    const result = CtrfReportSchema.safeParse(
+      buildMinimalReport({
+        baseline: {
+          reportId: '550e8400-e29b-41d4-a716-446655440000',
+          buildUrl: 'not-a-url',
+        },
+      }),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects non-datetime baseline.timestamp (G7)', () => {
+    const result = CtrfReportSchema.safeParse(
+      buildMinimalReport({
+        baseline: {
+          reportId: '550e8400-e29b-41d4-a716-446655440000',
+          timestamp: 'yesterday',
+        },
+      }),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects non-UUID test.id (G8)', () => {
+    const report = buildMinimalReport();
+    const result = CtrfReportSchema.safeParse({
+      ...report,
+      results: {
+        ...report.results,
+        tests: [
+          { name: 'test', status: 'passed', duration: 100, id: 'not-a-uuid' },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Zod error shape verification
 // ---------------------------------------------------------------------------
 
