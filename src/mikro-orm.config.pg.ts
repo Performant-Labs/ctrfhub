@@ -12,15 +12,32 @@
  */
 
 import { defineConfig } from '@mikro-orm/postgresql';
+import { Organization } from './entities/Organization.js';
+import { User } from './entities/User.js';
+import { Project } from './entities/Project.js';
+import { TestRun } from './entities/TestRun.js';
+import { TestResult } from './entities/TestResult.js';
+import { TestArtifact } from './entities/TestArtifact.js';
 
 export default defineConfig({
-  /** Entities will be added here as they are created in INFRA-004+ */
-  entities: [],
+  entities: [Organization, User, Project, TestRun, TestResult, TestArtifact],
 
   /** PostgreSQL migrations live in their own directory */
   migrations: {
     path: './src/migrations/pg',
     pathTs: './src/migrations/pg',
+    glob: '!(*.d).{js,ts}',
+  },
+
+  /**
+   * Better Auth manages its own tables — exclude them from migration generation.
+   * CTRFHub entities for Organization and User exist only for ORM relationship
+   * mapping; the actual DDL is handled by Better Auth's migration tooling.
+   *
+   * @see docs/planning/database-design.md §4 (Better Auth note)
+   */
+  schemaGenerator: {
+    skipTables: ['organization', 'user', 'session', 'account', 'verification'],
   },
 
   /**
