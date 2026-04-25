@@ -39,7 +39,6 @@ import fastifyStatic from '@fastify/static';
 import fastifyView from '@fastify/view';
 import { Eta } from 'eta';
 import { MikroORM } from '@mikro-orm/core';
-import { defineConfig } from '@mikro-orm/sqlite';
 import { fromNodeHeaders } from 'better-auth/node';
 
 import type { AppOptions } from './types.js';
@@ -230,18 +229,24 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   let orm: MikroORM;
 
   if (options.db !== undefined) {
-    // Explicit DB path provided (typically ':memory:' for integration tests)
-    orm = await MikroORM.init(
-      defineConfig({
-        entities: [],
-        dbName: options.db,
-        // Disable debug logging in tests unless explicitly enabled
-        debug: false,
-        // TODO(INFRA-004): Remove once entities ship — MikroORM v7 throws
-        // when entities array is empty and this flag is true (default).
-        discovery: { warnWhenNoEntities: false },
-      }),
-    );
+    // Explicit DB path provided (typically ':memory:' for integration tests).
+    // Reuse the production SQLite config (entities, migrations, skipTables)
+    // and override only the dbName — required so `em.count(User)` in the
+    // global preHandler resolves against a real entity registration.
+    const { default: sqliteConfig } = await import('./mikro-orm.config.sqlite.js');
+    orm = await MikroORM.init({
+      ...sqliteConfig,
+      dbName: options.db,
+      debug: false,
+      // Disable migration snapshots in test mode — otherwise the migrator
+      // writes a `.snapshot-<dbName>.json` next to the migrations dir for
+      // every unique tempfile DB path used by integration tests.
+      migrations: {
+        ...(sqliteConfig.migrations ?? {}),
+        snapshot: false,
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
   } else {
     // Resolve from environment — uses the runtime dialect selector.
     // The config may be PG or SQLite typed — MikroORM.init() accepts the
