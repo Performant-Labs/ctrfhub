@@ -29,7 +29,7 @@ Status key:
 **Page verification tiers:** T1 Headless (`/health` 503 during `booting`/`migrating`, 200 when ready; helmet CSP headers present)
 **Critical test paths:** `/health` returns `{ bootState: 'migrating', ... }` with 503; `/health` returns 200 when ready; global auth preHandler registered; `@fastify/view` Eta engine bound; SIGTERM triggers graceful close of DB + event bus
 **Acceptance:** `buildApp()` factory exists in `src/app.ts` with `AppOptions` interface (`testing`, `db`, `artifactStorage`, `eventBus`, `aiProvider`); `ZodTypeProvider` registered; global auth `preHandler` hook wired; `@fastify/helmet` registered with CSP from `architecture.md §CSP`; `@fastify/rate-limit` registered; `@fastify/static` registered for `src/assets/`; `@fastify/view` registered with Eta; `GET /health` returns correct `bootState` shape and 503 during migrations; graceful SIGTERM shutdown sequence implemented.
-- [ ] INFRA-002
+- [/] INFRA-002
 
 ---
 
