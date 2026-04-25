@@ -118,3 +118,45 @@ No new gaps. The brief's `storeRawKey: false` discrepancy is documented here (no
 - Implementation commit: `e529a6e` on `story/AUTH-001`
 - `@better-auth/api-key` 1.x installed and pinned in `package.json`
 - `@types/pg` and `@types/better-sqlite3` installed as devDependencies
+
+---
+
+## Remediation pass (Talos, 2026-04-25)
+
+All three blockers from `spec-audit.md` resolved. Commits pushed to `story/AUTH-001`.
+
+### Blocker 1 — HTMX status code (401 → 200) ✅
+
+- `src/app.ts` Branch 5: `reply.status(401)` → `reply.status(200)` for the HTMX unauthenticated path.
+- Fixed two stale JSDoc comments (`Bearer API key` → `` `x-api-token` API key ``; `HTMX 401 with HX-Redirect` → `HTMX 200 with HX-Redirect`).
+- `skills/better-auth-session-and-api-tokens.md` line 30: `+ 401` → `+ 200` with rationale added inline.
+- `src/__tests__/integration/auth.test.ts` Branch 5 test: `expect(401)` → `expect(200)`; test description updated accordingly.
+
+### Blocker 2 — Better Auth schema auto-migration on startup ✅
+
+- `src/app.ts`: `auth.$context.runMigrations()` called in `buildApp()` immediately after `orm.migrator.up()`. Call is idempotent — no-op when tables already exist.
+- Note: `better-auth` v1.6.9 does not ship a `generate` CLI binary. `runMigrations()` is the idiomatic schema creation mechanism at this version. No separate schema file to commit.
+- The test fixture's `seedAuthSchema()` helper is kept (idempotent, belt-and-suspenders) with a comment noting it can be removed in a follow-up cleanup story.
+
+### Blocker 3 — Test asserts `request.apiKeyUser` is populated ✅
+
+- New `describe` block: `AUTH-001 Branch 3 — request.apiKeyUser populated after API key validation`.
+- Registers a `GET /__test__/whoami` test-only route **before** the first `inject()` call to avoid Fastify's route-registration freeze.
+- Test creates an API key with `metadata: { projectId: 'blocker3-test-project' }`, sends `x-api-token`, and asserts:
+  - `apiKeyUser` is not null
+  - `apiKeyUser.id` is a non-empty string
+  - `apiKeyUser.metadata.projectId === 'blocker3-test-project'`
+
+### Test count
+
+- Before remediation: 21 tests in `auth.test.ts`
+- After remediation: **22 tests** (one new Blocker 3 test added)
+- Full suite: **134 tests pass, 0 failures** (`npm test` green ✅)
+
+### Commits
+
+| Commit | Message |
+|---|---|
+| `fc224e6` | `fix(AUTH-001): HTMX unauthenticated response 401 → 200 so HX-Redirect is consumed cleanly` |
+| `53454da` | `test(AUTH-001): add /__test__/whoami route + assert request.apiKeyUser populated` |
+
