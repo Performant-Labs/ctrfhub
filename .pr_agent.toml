@@ -95,3 +95,15 @@ publish_output_progress = false
 drop_params = true
 # Needed for models not in LiteLLM's built-in token count table
 max_model_len = 131072
+
+[ignore]
+# Files excluded from PR-Agent's review context. These don't get sent to the
+# model, which speeds up review and reduces token cost. Use sparingly — too
+# many excludes and a real bug can hide in a "boring" file.
+#
+# package-lock.json: an npm-generated lockfile. Multi-thousand-line diffs on
+# every dependency change push PR-Agent against the workflow's 15-minute
+# timeout (observed on PR #7's INFRA-001 review). The actual review value of
+# the lockfile is near-zero — `package.json` is what humans and PR-Agent
+# should care about.
+glob = ['package-lock.json']
