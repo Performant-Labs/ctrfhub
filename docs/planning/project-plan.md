@@ -60,14 +60,14 @@ Inspired by Reporter Engine’s strengths (real-time dashboards, AI analysis, ar
    - Display AI insights + allow manual override (saved per test).
 
 4. **Artifact Management**
-   - Upload and associate screenshots, videos, traces, and logs with tests (via `/api/artifact` or embedded in CTRF).
+   - Upload and associate screenshots, videos, traces, and logs with tests — co-uploaded with the run via the same multipart `POST /api/v1/projects/:slug/runs` request, or referenced inline in the CTRF JSON. **No separate `/api/artifact` endpoint** (per `product.md §Feature 4` and `skills/ctrf-ingest-validation.md`).
    - Secure viewing/download in the UI.
 
 5. **Authentication & Multi-Project**
    - Single-admin-per-org by default (bootstrap via `/setup` wizard — DD-020 — or CLI `bootstrap-admin --force`); **email-invitation multi-user onboarding deferred to PL-011** (Phase 2 / Business Edition).
    - Password reset (DD-021) and email verification (DD-022) shipped in MVP.
    - Admin + Viewer roles present in schema for forward compatibility; effectively Admin-only until PL-011 promotes.
-   - Project-scoped API tokens (generated in the UI, stored hashed) for CI ingestion — `Authorization: Bearer <token>` on `POST /api/ingest`.
+   - Project-scoped API tokens (generated in the UI, stored hashed) for CI ingestion — `x-api-token: <token>` on `POST /api/v1/projects/:slug/runs` (the canonical ingest endpoint per `product.md §Feature 5 Acceptance criteria`).
    - Multi-project support (one instance for multiple teams/repos).
 
 6. **CI / Reporter Integration**
