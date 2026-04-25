@@ -1,0 +1,10 @@
+/*
+ * CTRFHub — Tailwind CSS entry point.
+ *
+ * This file is the input for `npm run css:dev` / `npm run css:build`.
+ * INFRA-003 will add the full @import, @source, @theme, and @layer
+ * directives per skills/tailwind-4-flowbite-dark-only.md.
+ *
+ * For now this is a minimal stub that lets the css:build script succeed.
+ */
+@import "tailwindcss";
