@@ -51,7 +51,7 @@ Status key:
 **Page verification tiers:** none (no routes)
 **Critical test paths:** `npm run migrate:pg` against fresh Postgres; `npm run migrate:sqlite` against fresh SQLite; entities use only portable `p.*` types (no dialect-specific SQL); `MemoryArtifactStorage` and `MemoryEventBus` contracts pass shared unit tests
 **Acceptance:** Entities defined: `Organization`, `User` (Better Auth managed), `Project`, `TestRun`, `TestResult`, `TestArtifact`; all use portable `p.*` types only; migrations generated for both PG and SQLite dialects; `npm run migrate:pg` and `npm run migrate:sqlite` succeed against fresh DBs; entity barrel export at `src/entities/index.ts`; `MemoryArtifactStorage` and `MemoryEventBus` test doubles created in `src/__tests__/doubles/`.
-- [ ] INFRA-004
+- [x] INFRA-004
 
 ---
 
