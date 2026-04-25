@@ -64,6 +64,8 @@
 - `docs/planning/database-design.md` §4 (Better Auth note) — confirms which tables Better Auth owns and why they're excluded from MikroORM migration generation.
 - `docs/planning/tasks.md` §AUTH-001 — the canonical acceptance criteria source.
 
+**Org-wide context (optional deep-dive).** Each cited skill above has a `source:` frontmatter line pointing at Performant Labs's org-wide standards under `docs/ai_guidance/`. The symlink resolves on workspaces with `~/Sites/ai_guidance` cloned (Daedalus has it; Talos as of 2026-04-25 — see `DEVELOPER_SETUP.md` "AntiGravity workspace readiness check" for setup). Skills inline the relevant rules — following the source is for broader context or rule verification, not required to do the work.
+
 ## Files in scope
 
 - `src/auth.ts` — new (the `betterAuth({ ... })` config + export of `auth`)

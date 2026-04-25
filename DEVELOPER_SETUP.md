@@ -37,6 +37,16 @@ claude auth login         # Claude Code OAuth (tokens stored in macOS Keychain)
 
 The bare-metal Mac authenticates `claude` for the local Argos PR-review path. VMs running Talos don't strictly need `claude` (the AntiGravity instance has its own model bundled), but installing it there keeps both workspaces symmetric.
 
+**Clone the Performant Labs `ai_guidance` repo** to `~/Sites/ai_guidance`. The CTRFHub repo has `docs/ai_guidance` as a symlink pointing at that path; cloning it makes the symlink resolve so skill `source:` references can be followed for deeper org-wide context. Required on every workspace (Daedalus, Talos, future). Skills/ files inline the relevant rules so feature work isn't strictly blocked by a broken symlink — but the readiness check below flags it as WARN and the in-repo cross-references look ugly when the link is dead.
+
+```bash
+mkdir -p ~/Sites
+git clone <ai_guidance repo URL> ~/Sites/ai_guidance
+# verify: from ~/Projects/ctrfhub, `ls docs/ai_guidance/` should list directory contents
+```
+
+If the symlink target path (`/Users/andreangelantoni/Sites/ai_guidance`, hard-coded into the symlink) doesn't match your home directory, either set up the matching absolute path on your workspace OR replace the symlink with one pointing at your actual ai_guidance clone (don't commit that change — it's per-workspace).
+
 ---
 
 ## AntiGravity workspace readiness check
@@ -119,6 +129,10 @@ Confirm these files exist in the clone (each is essential context the implemente
 ### 9. Browser harness (optional — only needed for T2.5 Authenticated State on auth-gated UI stories)
 - `ls -l ~/.local/bin/browser-harness 2>/dev/null` — note whether present. If missing, that's fine for stories without auth-gated UI (CTRF-001 and most early stories); flag it so it can be set up before the first auth-gated UI verification story (DASH-001 onwards).
 
+### 10. docs/ai_guidance symlink resolves
+- `ls docs/ai_guidance/ 2>&1 | head -3` — should list ai_guidance subdirectories (e.g., `frameworks/`, `testing/`). If it errors with "No such file or directory", the symlink target (`/Users/andreangelantoni/Sites/ai_guidance`) doesn't exist on this workspace. Resolve by cloning the Performant Labs ai_guidance repo to `~/Sites/ai_guidance`.
+- WARN if broken — feature work isn't blocked (skills inline the rules), but skill `source:` references and any brief that points at `docs/ai_guidance/<path>` will dead-end.
+
 ## Report format
 
 Reply to André with this structured report. No narrative — Argos parses it directly:
@@ -148,6 +162,7 @@ Reply to André with this structured report. No narrative — Argos parses it di
 | 7 | Skills + agents files present | PASS / FAIL / WARN | <missing files if any; agents.md missing → WARN "known gap"> |
 | 8 | .argos/ tracked (NOT gitignored) | PASS / FAIL | — (FAIL → workspace is on stale .gitignore; `git pull origin main`) |
 | 9 | browser-harness present | PASS / WARN | <only WARN if missing> |
+| 10 | docs/ai_guidance symlink resolves | PASS / WARN | <PASS if `ls docs/ai_guidance/` lists subdirectories; WARN if broken — note user-home mismatch if any> |
 
 ### Overall
 **Verdict:** READY / NOT READY
@@ -170,6 +185,7 @@ Reply to André with this structured report. No narrative — Argos parses it di
 | `git config user.name` / `user.email` empty (but past commits work) | Optional but recommended: `git config --global user.name "Your Name"` and `git config --global user.email "you@example.com"` — makes the implicit identity explicit |
 | `agents.md` at repo root missing | Known gap — no workspace-side fix; Argos creates the file in a separate chore PR. Continue with the per-role files at `.antigravity/agents/*.md` |
 | `browser-harness` missing | Defer until first auth-gated UI story (DASH-001 onwards). Install location: `~/.local/bin/browser-harness`. See `skills/page-verification-hierarchy.md §T2.5` for setup |
+| `docs/ai_guidance` symlink broken | Clone Performant Labs ai_guidance to `~/Sites/ai_guidance`. If the symlink's hardcoded target (`/Users/andreangelantoni/Sites/ai_guidance`) doesn't match your home, either create that absolute path on your workspace or replace the in-repo symlink with one pointing at your actual clone (don't commit that change — per-workspace) |
 ~~~prompt-end
 
 ---
