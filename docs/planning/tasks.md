@@ -180,7 +180,7 @@ Status key:
 **Page verification tiers:** none (no routes)
 **Critical test paths:** `AiProvider` interface has `categorizeFailures`, `correlateRootCauses`, `generateRunSummary`; `MockAiProvider.calls[]` records invocations for assertions; `OpenAiProvider` / `AnthropicProvider` / `GroqProvider` selected by `AI_PROVIDER` env; unit tests for `getEffectiveCategory`, `getCategorySource`, `splitIntoBatches`
 **Acceptance:** `AiProvider` interface with `categorizeFailures`, `correlateRootCauses`, `generateRunSummary`; `MockAiProvider` test double in `src/__tests__/doubles/`; `OpenAiProvider`, `AnthropicProvider`, `GroqProvider` real implementations behind `AI_PROVIDER` env; unit tests for `getEffectiveCategory` and `getCategorySource` display helpers; unit tests for `splitIntoBatches`.
-- [ ] AI-001
+- [/] AI-001
 
 ---
 
