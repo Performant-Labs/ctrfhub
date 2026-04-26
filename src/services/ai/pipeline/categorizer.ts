@@ -20,7 +20,6 @@ import type { AiProvider } from '../types.js';
 import type { EventBus, RunIngestedPayload } from '../../event-bus.js';
 import { RunEvents } from '../../event-bus.js';
 import { TestResult } from '../../../entities/TestResult.js';
-import { AiPipelineLog } from '../../../entities/AiPipelineLog.js';
 import { splitIntoBatches } from '../helpers.js';
 import { isAiCloudPipelineConsented } from './consent.js';
 import { CategorizeOutputSchema } from './schemas.js';
