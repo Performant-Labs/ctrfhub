@@ -152,3 +152,14 @@ Severity: **P0** = blocks implementation; **P1** = factual error / contradiction
 - **If a P0 gap affects your story:** Halt and document the blocker in the handoff note. Do not guess.
 - **If a P1 gap affects your story:** Use `docs/planning/product.md` or `docs/planning/architecture.md` as the authoritative source over the conflicting doc. Flag the conflict in the handoff note.
 - **Closing a gap:** When a human reviewer resolves a gap, mark it `✅ Closed` with the resolution. Do not remove P0 items until they are closed.
+
+---
+
+## P3 — Nits / observed reliability issues (non-blocking)
+
+### G-P3-001 — Flaky `auth.test.ts:474` due to Better Auth API-key rate limiter
+**Source:** Surfaced 2026-04-25 during local `npm run test:coverage` on `chore/coverage-exclude-ai-providers` after `npm install` of AI-001's new SDK dependencies. 346/347 tests passed; the failure was `expect(badRes.statusCode).toBe(401)` on `src/__tests__/integration/auth.test.ts:474`.
+**Affects:** `src/__tests__/integration/auth.test.ts:474` and any future test sweep that touches Better Auth's API-key plugin in tight succession.
+**Suspected cause:** `@better-auth/api-key` enforces an internal rate limit on key verification (≈10 per 10s window, enabled even when `NODE_ENV` unset). CTRF-002's feature-handoff already flagged this fragility and worked around it by splitting CTRF integration tests into 3 describe blocks. As more API-key-using tests accumulate across stories, the rate limiter becomes increasingly likely to bite at suite boundaries.
+**Required action:** None for now — non-blocking, reproducible only in specific orderings. When AUTH-002 / AUTH-003 add more auth-touching tests, consider either (a) configuring `rateLimit: { enabled: false }` in `buildAuth()` when `testing: true` (CTRF-002's feature-handoff suggested this as a future improvement), or (b) splitting more describe blocks into fresh app instances.
+**Status:** Open — observed but unprioritized.
