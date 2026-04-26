@@ -156,7 +156,7 @@ describe('POST /api/v1/projects/:slug/runs', () => {
     expect(JSON.parse(res.body)).toHaveProperty('runId');
   });
 
-  it('publishes run.created event on the EventBus', async () => {
+  it('publishes run.ingested event on the EventBus', async () => {
     const events: unknown[] = [];
     bus.subscribe('org:1', (event) => events.push(event));
 
@@ -168,7 +168,7 @@ describe('POST /api/v1/projects/:slug/runs', () => {
     });
 
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ type: 'run.created' });
+    expect(events[0]).toMatchObject({ type: 'run.ingested' });
   });
 
   it('stores uploaded screenshots via ArtifactStorage', async () => {

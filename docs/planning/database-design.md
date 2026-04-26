@@ -1073,10 +1073,10 @@ Fastify streams SSE via `reply.raw` with no extra library. The event payload is 
 
 | Screen | Event | Behaviour |
 |---|---|---|
-| Test Runs list | `run.created` | Shows a sticky "↑ N new run(s) — click to load" banner; does not auto-insert (avoids disrupting users reading the list) |
-| Dashboard | `run.created` | Silent auto-update of KPI cards and trend chart via HTMX partial re-render |
-| Project list | `run.created` | Silent update of the affected project row (last run timestamp + status badge) |
-| Milestones *(Business)* | `run.created` | Silent update of the milestone progress bar if `run.milestone_id` is set |
+| Test Runs list | `run.ingested` | Shows a sticky "↑ N new run(s) — click to load" banner; does not auto-insert (avoids disrupting users reading the list) |
+| Dashboard | `run.ingested` | Silent auto-update of KPI cards and trend chart via HTMX partial re-render |
+| Project list | `run.ingested` | Silent update of the affected project row (last run timestamp + status badge) |
+| Milestones *(Business)* | `run.ingested` | Silent update of the milestone progress bar if `run.milestone_id` is set |
 | Test Run Detail | — | Not applicable; runs are complete batches on ingest; no in-flight streaming in MVP |
 
 **SSE channel:** One persistent stream per authenticated user per org — `GET /api/sse/orgs/:orgId`. All event types (settings changes from DD-010 AND data events) flow through this single stream. The client filters by `event:` type.
@@ -1084,7 +1084,7 @@ Fastify streams SSE via `reply.raw` with no extra library. The event payload is 
 **Event format:**
 
 ```
-event: run.created
+event: run.ingested
 data: {"projectId":42,"projectSlug":"frontend-e2e","runId":891,"status":"failed","passRate":0.94}
 ```
 
@@ -1094,13 +1094,13 @@ data: {"projectId":42,"projectSlug":"frontend-e2e","runId":891,"status":"failed"
 <!-- Dashboard KPI cards — silent auto-update -->
 <div id="kpi-cards"
      hx-get="/projects/frontend-e2e/dashboard/kpis"
-     hx-trigger="sse:run.created"
+     hx-trigger="sse:run.ingested"
      hx-swap="outerHTML">
 
 <!-- Project list row — targeted row update -->
 <tr id="project-row-42"
     hx-get="/projects/frontend-e2e/row"
-    hx-trigger="sse:run.created[detail.projectId==42]"
+    hx-trigger="sse:run.ingested[detail.projectId==42]"
     hx-swap="outerHTML">
 
 <!-- Test Runs list — deferred banner (not silent) -->
@@ -1309,7 +1309,7 @@ Every HTMX element must be written with the indicator hook in place from the sta
 <!-- Every hx-* element that updates content includes hx-indicator -->
 <div id="runs-table"
      hx-get="/projects/frontend-e2e/runs"
-     hx-trigger="sse:run.created"
+     hx-trigger="sse:run.ingested"
      hx-swap="outerHTML"
      hx-indicator="#runs-table">  <!-- self-indicating -->
 </div>
@@ -1475,7 +1475,7 @@ Processing order:
 3. For each `attachment` in each test result:
    - If `path` starts with `http://` or `https://` → store as `storage_type: 'url'`, `storage_key: path`
    - Otherwise → match `path` to an uploaded file part, store via `ArtifactStorage`, create `test_artifacts` row
-4. Broadcast `run.created` SSE event
+4. Broadcast `run.ingested` SSE event
 
 **File size limits:**
 
