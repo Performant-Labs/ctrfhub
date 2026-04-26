@@ -62,7 +62,7 @@ Status key:
 **Page verification tiers:** none (no rendered routes)
 **Critical test paths:** schema-generator emits CREATE TABLE statements for all 7 entities (Organization, User, Project, TestRun, TestResult, TestArtifact, IngestIdempotencyKey) in topological FK order on fresh PG and fresh SQLite; `updateSchema()` is idempotent on existing schema; `/health` returns 200 within 15s on fresh DB; previously-soft-failing e2e job (CI-001) passes hard
 **Acceptance:** App boot uses `orm.schema.updateSchema()` instead of migrator; `src/migrations/` deleted; `skipTables: ['organization']` exclusion in mikro-orm config(s) removed; `Organization` entity created from definition by schema-generator; `package.json` `migrate:*` scripts replaced with `schema:*`; CI dialect-verification step uses schema-generator (not `migrate:pg`/`migrate:sqlite`); e2e job's `continue-on-error: true` removed (revives hard e2e gating); existing 210+ tests pass; `architecture.md §Production Deployment` / `§Image build` / `§Migrations in production` rewritten for schema-generator boot; `tasks.md §INFRA-004` acceptance reworded; `skills/mikroorm-dual-dialect.md` updated to describe schema-generator pattern.
-- [/] INFRA-005
+- [x] INFRA-005
 
 ---
 
