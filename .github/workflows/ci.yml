@@ -61,6 +61,26 @@ jobs:
       - name: ESLint
         run: npx eslint src/ --ext .ts
 
+      - name: Tugboat config sanity
+        run: |
+          # 1. Pure ASCII — Tugboat's YAML parser strips high bits and chokes
+          #    on multibyte UTF-8 (em-dashes, box drawings, arrows, emojis).
+          #    See PRs #38, #39 for prior history.
+          if LC_ALL=C grep -nP '[^\x00-\x7F]' .tugboat/config.yml; then
+            echo "::error file=.tugboat/config.yml::Non-ASCII bytes found in .tugboat/config.yml. Tugboat's YAML parser strips high bits, mangling multibyte UTF-8. Use ASCII-only in this file."
+            exit 1
+          fi
+          # 2. Image registry allowlist — Docker Hub's official postgres requires a
+          #    Docker volume that's only on Tugboat Premium. Use tugboatqa/* curated
+          #    images instead. See PR #40 for prior history.
+          BAD=$(grep -E '^[[:space:]]+image:' .tugboat/config.yml | grep -vE 'tugboatqa/|node:' || true)
+          if [ -n "$BAD" ]; then
+            echo "::error file=.tugboat/config.yml::Image not on free-tier allowlist. Use tugboatqa/* or node:* only."
+            echo "$BAD"
+            exit 1
+          fi
+          echo "Tugboat config sanity passed."
+
   # ---------------------------------------------------------------------------
   # unit — Vitest unit tests
   # No database, no HTTP, no filesystem. < 200ms expected.
