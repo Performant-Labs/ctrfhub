@@ -23,9 +23,10 @@ import { TestRun } from './entities/TestRun.js';
 import { TestResult } from './entities/TestResult.js';
 import { TestArtifact } from './entities/TestArtifact.js';
 import { IngestIdempotencyKey } from './entities/IngestIdempotencyKey.js';
+import { AiPipelineLog } from './entities/AiPipelineLog.js';
 
 export default defineConfig({
-  entities: [Organization, User, Project, TestRun, TestResult, TestArtifact, IngestIdempotencyKey],
+  entities: [Organization, User, Project, TestRun, TestResult, TestArtifact, IngestIdempotencyKey, AiPipelineLog],
 
   /**
    * Better Auth manages its own tables — exclude them from schema generation.
