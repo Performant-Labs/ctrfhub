@@ -47,10 +47,10 @@ Status key:
 ### INFRA-004 — Core database entities and first migration
 **Depends on:** INFRA-001
 **Skills required:** `mikroorm-dual-dialect.md`
-**Test tiers required:** unit (entity helpers), integration (migrations run on both dialects)
+**Test tiers required:** unit (entity helpers), integration (schema-generator on both dialects)
 **Page verification tiers:** none (no routes)
-**Critical test paths:** `npm run migrate:pg` against fresh Postgres; `npm run migrate:sqlite` against fresh SQLite; entities use only portable `p.*` types (no dialect-specific SQL); `MemoryArtifactStorage` and `MemoryEventBus` contracts pass shared unit tests
-**Acceptance:** Entities defined: `Organization`, `User` (Better Auth managed), `Project`, `TestRun`, `TestResult`, `TestArtifact`; all use portable `p.*` types only; migrations generated for both PG and SQLite dialects; `npm run migrate:pg` and `npm run migrate:sqlite` succeed against fresh DBs; entity barrel export at `src/entities/index.ts`; `MemoryArtifactStorage` and `MemoryEventBus` test doubles created in `src/__tests__/doubles/`.
+**Critical test paths:** `npm run schema:update:pg` against fresh Postgres; `npm run schema:update:sqlite` against fresh SQLite; entities use only portable `p.*` types (no dialect-specific SQL); `MemoryArtifactStorage` and `MemoryEventBus` contracts pass shared unit tests
+**Acceptance:** Entities defined: `Organization`, `User` (Better Auth managed), `Project`, `TestRun`, `TestResult`, `TestArtifact`; all use portable `p.*` types only; schema-generator creates all CTRFHub-owned tables on fresh PG and SQLite databases; `npm run schema:update:pg` and `npm run schema:update:sqlite` succeed against fresh DBs; entity barrel export at `src/entities/index.ts`; `MemoryArtifactStorage` and `MemoryEventBus` test doubles created in `src/__tests__/doubles/`. *(Reworded by INFRA-005: migration files replaced with schema-generator at boot.)*
 - [x] INFRA-004
 
 ---

@@ -31,9 +31,9 @@ describe('MikroORM dialect configs', () => {
     const config = pgModule.default;
 
     expect(config).toBeDefined();
-    // The config should have entities and migrations defined
+    // The config should have entities and schemaGenerator defined
     expect(config).toHaveProperty('entities');
-    expect(config).toHaveProperty('migrations');
+    expect(config).toHaveProperty('schemaGenerator');
   });
 
   it('SQLite config imports without error', async () => {
@@ -42,7 +42,7 @@ describe('MikroORM dialect configs', () => {
 
     expect(config).toBeDefined();
     expect(config).toHaveProperty('entities');
-    expect(config).toHaveProperty('migrations');
+    expect(config).toHaveProperty('schemaGenerator');
   });
 
   it('resolveOrmConfig selects SQLite when DATABASE_URL is unset', async () => {
@@ -79,7 +79,7 @@ describe('MikroORM dialect configs', () => {
 
       expect(config).toBeDefined();
       expect(config).toHaveProperty('entities');
-      expect(config).toHaveProperty('migrations');
+      expect(config).toHaveProperty('schemaGenerator');
     } finally {
       // Restore original value
       if (originalUrl !== undefined) {

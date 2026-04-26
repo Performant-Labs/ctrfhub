@@ -5,7 +5,10 @@
  * environment to pick the correct driver at startup. This file is the
  * entry point used by the application at boot; the dialect-specific
  * configs (`mikro-orm.config.pg.ts`, `mikro-orm.config.sqlite.ts`) are
- * used only by the MikroORM CLI for migration generation.
+ * also used by the MikroORM CLI for schema inspection (`schema:emit:*`).
+ *
+ * Schema is managed by `orm.schema.update()` at app boot (INFRA-005).
+ * No migration files exist — schema-generator handles DDL idempotently.
  *
  * @see skills/mikroorm-dual-dialect.md
  */

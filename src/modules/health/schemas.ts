@@ -15,7 +15,10 @@ import { z } from 'zod';
  * The three-phase boot lifecycle of the API process.
  *
  * Transitions: `booting → migrating → ready`.
- * If migrations fail, the process exits non-zero (no `failed` state
+ * The `migrating` state is retained for backward compatibility but now
+ * represents the schema-generator sync phase (`orm.schema.update()`)
+ * rather than running migration files (INFRA-005 pivot).
+ * If schema sync fails, the process exits non-zero (no `failed` state
  * is exposed via the health endpoint — the process simply isn't running).
  *
  * @see docs/planning/architecture.md §Health endpoint — status codes table
