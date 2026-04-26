@@ -24,8 +24,8 @@
 set -euo pipefail
 
 BASE_URL="http://localhost:3000"
-ADMIN_EMAIL="${TUGBOAT_ADMIN_EMAIL:-admin@ctrfhub.local}"
-ADMIN_PASSWORD="${TUGBOAT_ADMIN_PASSWORD:-PreviewAdmin2026!}"
+ADMIN_EMAIL="${TUGBOAT_ADMIN_EMAIL:?TUGBOAT_ADMIN_EMAIL must be set in Tugboat Repository Settings}"
+ADMIN_PASSWORD="${TUGBOAT_ADMIN_PASSWORD:?TUGBOAT_ADMIN_PASSWORD must be set in Tugboat Repository Settings}"
 COOKIE_JAR="/tmp/ctrfhub-seed-cookies"
 ORG_ID="preview-org"
 ORG_NAME="Preview Org"
