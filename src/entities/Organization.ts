@@ -1,16 +1,17 @@
 /**
  * Organization entity — top-level tenant boundary.
  *
- * **Better Auth managed.** This table is created and maintained by Better Auth's
- * `organization` plugin. CTRFHub defines this entity for ORM relationship
- * mapping only — CTRFHub migrations MUST NOT create or alter this table.
- * The `schemaGenerator.skipTables` config excludes it from migration generation.
+ * **CTRFHub-owned.** This table's DDL is managed by MikroORM's schema-generator
+ * (`orm.schema.update()`), not by Better Auth. The `organization` table was
+ * originally planned as a Better Auth `organization` plugin table, but the
+ * INFRA-005 pivot moved it to be schema-generator-managed so that FK
+ * relationships to `projects` are created in the correct topological order.
  *
  * All data in the system belongs to an organization. Projects, users, and
  * settings are scoped to a single org.
  *
  * @see docs/planning/database-design.md §4.1
- * @see skills/better-auth-session-and-api-tokens.md
+ * @see skills/mikroorm-dual-dialect.md
  */
 
 import { defineEntity, p } from '@mikro-orm/core';

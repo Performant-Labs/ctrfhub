@@ -121,12 +121,6 @@ jobs:
   # ---------------------------------------------------------------------------
   e2e:
     name: E2E Tests (Playwright)
-    # SOFT-FAIL — Tracking Better Auth `organization` FK migration bug surfaced
-    # by this job (see follow-up story INFRA-005 for the schema-generator pivot
-    # that resolves it). The app crashes on PG boot because INFRA-004's
-    # migration adds a FK to `organization` before that table exists. Drop
-    # this `continue-on-error` once INFRA-005 lands.
-    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: integration
@@ -177,16 +171,16 @@ jobs:
 
       - name: Wait for app to be healthy
         run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 20); do
             STATUS=$(curl -sf http://localhost:3000/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
             if [ "$STATUS" = "ok" ]; then
               echo "App is healthy"
               exit 0
             fi
-            echo "Waiting for app... attempt $i/30 (status: ${STATUS:-unknown})"
-            sleep 2
+            echo "Waiting for app... attempt $i/20 (status: ${STATUS:-unknown})"
+            sleep 1
           done
-          echo "App did not become healthy within 60s"
+          echo "App did not become healthy within 20s"
           exit 1
 
       - name: Run Playwright E2E tests

@@ -13,6 +13,7 @@
  * - Global auth preHandler hook (skeleton — real logic in AUTH-001)
  * - GET /health (readiness probe — 503 during boot, 200 when ready)
  * - MikroORM lifecycle (init, per-request em fork, shutdown)
+ * - Schema sync at boot (schema-generator, not migrator — INFRA-005)
  * - Graceful shutdown (SIGTERM/SIGINT → close sequence)
  *
  * The four optional DI seams in `AppOptions` allow integration tests
@@ -163,7 +164,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   // 2. Boot state management
   // -----------------------------------------------------------------------
 
-  /** Current boot lifecycle phase: booting → migrating → ready */
+  /** Current boot lifecycle phase: booting → syncing → ready */
   let currentBootState: BootState = 'booting';
 
   /**
@@ -173,7 +174,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   app.decorate('getBootState', () => currentBootState);
 
   /**
-   * Decorated setter for the boot state — called by the migration
+   * Decorated setter for the boot state — called by the schema-sync
    * sequence and the main bootstrap.
    */
   app.decorate('setBootState', (state: BootState) => {
@@ -233,7 +234,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
 
   if (options.db !== undefined) {
     // Explicit DB path provided (typically ':memory:' for integration tests).
-    // Reuse the production SQLite config (entities, migrations, skipTables)
+    // Reuse the production SQLite config (entities, schemaGenerator, skipTables)
     // and override only the dbName — required so `em.count(User)` in the
     // global preHandler resolves against a real entity registration.
     const { default: sqliteConfig } = await import('./mikro-orm.config.sqlite.js');
@@ -241,13 +242,6 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       ...sqliteConfig,
       dbName: options.db,
       debug: false,
-      // Disable migration snapshots in test mode — otherwise the migrator
-      // writes a `.snapshot-<dbName>.json` next to the migrations dir for
-      // every unique tempfile DB path used by integration tests.
-      migrations: {
-        ...(sqliteConfig.migrations ?? {}),
-        snapshot: false,
-      },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
   } else {
@@ -277,14 +271,17 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     (request as FastifyRequest & { em: ReturnType<typeof orm.em.fork> }).em = orm.em.fork();
   });
 
-  // Run migrations (transition boot state)
+  // Run schema-generator to sync DDL (transition boot state).
+  // `update()` is idempotent: safe on fresh DB and existing DB.
+  // It creates missing tables and alters existing ones to match entity
+  // definitions, respecting `skipTables` for Better Auth-managed tables.
+  // INFRA-005: replaces `orm.migrator.up()` — no migration files exist.
   currentBootState = 'migrating';
   try {
-    // MikroORM v7 exposes migrator as a getter property, not a method
-    await orm.migrator.up();
+    await orm.schema.update();
   } catch (err) {
-    // Migration failure is fatal — log and let the process crash
-    app.log.error({ err }, 'Migration failed — process will exit');
+    // Schema sync failure is fatal — log and let the process crash
+    app.log.error({ err }, 'Schema sync failed — process will exit');
     throw err;
   }
 
@@ -463,7 +460,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   }, async (_request, reply) => {
     const bootState = currentBootState;
 
-    // During boot or migration, return 503 immediately — no DB check
+    // During boot or schema sync, return 503 immediately — no DB check
     if (bootState !== 'ready') {
       return reply.status(503).send({
         status: bootState,

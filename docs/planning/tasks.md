@@ -47,11 +47,22 @@ Status key:
 ### INFRA-004 — Core database entities and first migration
 **Depends on:** INFRA-001
 **Skills required:** `mikroorm-dual-dialect.md`
-**Test tiers required:** unit (entity helpers), integration (migrations run on both dialects)
+**Test tiers required:** unit (entity helpers), integration (schema-generator on both dialects)
 **Page verification tiers:** none (no routes)
-**Critical test paths:** `npm run migrate:pg` against fresh Postgres; `npm run migrate:sqlite` against fresh SQLite; entities use only portable `p.*` types (no dialect-specific SQL); `MemoryArtifactStorage` and `MemoryEventBus` contracts pass shared unit tests
-**Acceptance:** Entities defined: `Organization`, `User` (Better Auth managed), `Project`, `TestRun`, `TestResult`, `TestArtifact`; all use portable `p.*` types only; migrations generated for both PG and SQLite dialects; `npm run migrate:pg` and `npm run migrate:sqlite` succeed against fresh DBs; entity barrel export at `src/entities/index.ts`; `MemoryArtifactStorage` and `MemoryEventBus` test doubles created in `src/__tests__/doubles/`.
+**Critical test paths:** `npm run schema:update:pg` against fresh Postgres; `npm run schema:update:sqlite` against fresh SQLite; entities use only portable `p.*` types (no dialect-specific SQL); `MemoryArtifactStorage` and `MemoryEventBus` contracts pass shared unit tests
+**Acceptance:** Entities defined: `Organization`, `User` (Better Auth managed), `Project`, `TestRun`, `TestResult`, `TestArtifact`; all use portable `p.*` types only; schema-generator creates all CTRFHub-owned tables on fresh PG and SQLite databases; `npm run schema:update:pg` and `npm run schema:update:sqlite` succeed against fresh DBs; entity barrel export at `src/entities/index.ts`; `MemoryArtifactStorage` and `MemoryEventBus` test doubles created in `src/__tests__/doubles/`. *(Reworded by INFRA-005: migration files replaced with schema-generator at boot.)*
 - [x] INFRA-004
+
+---
+
+### INFRA-005 — Replace migration runner with schema-generator at boot
+**Depends on:** INFRA-004
+**Skills required:** `mikroorm-dual-dialect.md`, `vitest-three-layer-testing.md`, `page-verification-hierarchy.md`
+**Test tiers required:** integration (schema-generator on both dialects)
+**Page verification tiers:** none (no rendered routes)
+**Critical test paths:** schema-generator emits CREATE TABLE statements for all 7 entities (Organization, User, Project, TestRun, TestResult, TestArtifact, IngestIdempotencyKey) in topological FK order on fresh PG and fresh SQLite; `updateSchema()` is idempotent on existing schema; `/health` returns 200 within 15s on fresh DB; previously-soft-failing e2e job (CI-001) passes hard
+**Acceptance:** App boot uses `orm.schema.updateSchema()` instead of migrator; `src/migrations/` deleted; `skipTables: ['organization']` exclusion in mikro-orm config(s) removed; `Organization` entity created from definition by schema-generator; `package.json` `migrate:*` scripts replaced with `schema:*`; CI dialect-verification step uses schema-generator (not `migrate:pg`/`migrate:sqlite`); e2e job's `continue-on-error: true` removed (revives hard e2e gating); existing 210+ tests pass; `architecture.md §Production Deployment` / `§Image build` / `§Migrations in production` rewritten for schema-generator boot; `tasks.md §INFRA-004` acceptance reworded; `skills/mikroorm-dual-dialect.md` updated to describe schema-generator pattern.
+- [x] INFRA-005
 
 ---
 

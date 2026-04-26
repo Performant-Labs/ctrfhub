@@ -178,19 +178,21 @@ The dev compose file mounts the source tree as a volume and runs `tsx watch` ins
 
 SQLite users skip the `db` service entirely — set `SQLITE_PATH=/data/ctrfhub.db` and the app creates the file automatically.
 
-### Database migrations (dev)
+### Database schema management (dev)
+
+Schema is managed by MikroORM's schema-generator (`orm.schema.updateSchema()`), not by migration files. The app syncs the database schema to match entity definitions on every boot. This is idempotent — safe on fresh and existing databases.
 
 ```bash
-# Postgres
-docker compose -f compose.dev.yml exec app npm run migrate:pg
+# Inspect what DDL changes schema-generator would apply (dry-run)
+docker compose -f compose.dev.yml exec app npm run schema:emit:pg
+docker compose -f compose.dev.yml exec app npm run schema:emit:sqlite
 
-# SQLite
-docker compose -f compose.dev.yml exec app npm run migrate:sqlite
-
-# Generate a new migration after changing entities
-docker compose -f compose.dev.yml exec app npm run migrate:create:pg
-docker compose -f compose.dev.yml exec app npm run migrate:create:sqlite
+# Apply schema changes (equivalent to what happens on app boot)
+docker compose -f compose.dev.yml exec app npm run schema:update:pg
+docker compose -f compose.dev.yml exec app npm run schema:update:sqlite
 ```
+
+> **Note (INFRA-005):** Migration files (`src/migrations/`) no longer exist. When v1.0 ships and we have real production deployments with data to preserve, generate ONE baseline migration from the v1.0 entity state, commit it as `src/migrations/0001_baseline.ts`, and switch back to migration-mode for production upgrades.
 
 ### Running tests (dev)
 
@@ -307,27 +309,28 @@ server {
 | Uploaded artifacts | Local volume or S3/MinIO | Replicate S3 bucket; snapshot local volume |
 | Auth sessions + API key hashes | PostgreSQL / SQLite (same DB) | Covered by DB backup |
 
-### Migrations in production
+### Schema sync at boot
 
-Migrations run automatically at container startup, but **only in the `api` container** (`dist/server.js`). The `worker` container (`dist/worker.js`) must never call `migrator.up()`.
+Schema is synced automatically at container startup using `orm.schema.updateSchema()`, but **only in the `api` container** (`dist/server.js`). The `worker` container (`dist/worker.js`) must never call `updateSchema()`.
 
 ```typescript
 // src/server.ts  — api container entrypoint ONLY
 const orm = await MikroORM.init(config);
-const migrator = orm.getMigrator();
-await migrator.up();   // run pending migrations — api entrypoint only
+await orm.schema.updateSchema();   // sync schema — api entrypoint only
 await startServer();
 
 // src/worker.ts  — worker container entrypoint
-// ❌ Do NOT call migrator.up() here.
+// ❌ Do NOT call updateSchema() here.
 // The worker depends_on the api container being started,
-// which guarantees migrations have already run.
+// which guarantees schema is already synced.
 await startWorker();
 ```
 
-**Why this matters:** Both `api` and `worker` start from the same image. If both called `migrator.up()` simultaneously, they would race to acquire MikroORM's advisory lock on the `mikro_orm_migrations` table. The race itself is safe (PostgreSQL advisory lock prevents double-execution), but the losing container will block at startup and may time out before the lock is released on very large migration sets.
+**Why this matters:** Both `api` and `worker` start from the same image. If both called `updateSchema()` simultaneously, they would race to alter tables. The race is mostly safe (DDL is idempotent), but the losing container may encounter transient lock-wait errors on PostgreSQL.
 
-For HA multi-instance deployments (multiple `api` replicas), run migrations as a dedicated one-shot init container before starting the app containers.
+For HA multi-instance deployments (multiple `api` replicas), run schema sync as a dedicated one-shot init container before starting the app containers.
+
+> **Forward-looking note (INFRA-005):** The schema-generator approach is correct for MVP — no production users, no data to preserve, no migration ceremony needed. When v1.0 ships and we have real deployments, generate ONE baseline migration from the v1.0 entity state, commit it as `src/migrations/0001_baseline.ts`, and switch back to migration-mode for production upgrades. Schema-generator is a development/MVP tool; migrations are the production-safe tool for evolving schema while preserving data.
 
 ### Graceful shutdown
 
@@ -471,9 +474,9 @@ The existing DD-014 CORS headers (`Access-Control-Allow-Origin: trace.playwright
 
 ### Health endpoint
 
-`GET /health` — unauthenticated. Readiness-shaped: returns 200 **only after the `api` process has completed boot** (including database migrations). Used by Docker compose `healthcheck`, upstream load balancers, and Kubernetes probes to decide whether to route traffic to this instance.
+`GET /health` — unauthenticated. Readiness-shaped: returns 200 **only after the `api` process has completed boot** (including schema sync). Used by Docker compose `healthcheck`, upstream load balancers, and Kubernetes probes to decide whether to route traffic to this instance.
 
-The process tracks a `bootState` value that transitions through: `booting → migrating → ready`. If migrations fail, `bootState` moves to `failed` and the process exits non-zero so the orchestrator restarts it.
+The process tracks a `bootState` value that transitions through: `booting → migrating → ready`. The `migrating` state is retained for backward compatibility but now represents the schema-generator sync phase (`orm.schema.updateSchema()`) rather than running migration files (INFRA-005 pivot). If schema sync fails, `bootState` moves to `failed` and the process exits non-zero so the orchestrator restarts it.
 
 **Response shape:**
 
@@ -485,9 +488,9 @@ The process tracks a `bootState` value that transitions through: `booting → mi
 
 | `bootState` | HTTP | `status` | Notes |
 |---|---|---|---|
-| `booting` | 503 | `booting` | Process started; migrations haven't begun yet (rare, narrow window) |
-| `migrating` | 503 | `migrating` | `migrator.up()` is running; **must return 503** to prevent LBs routing traffic to a DB undergoing DDL |
-| `ready` | 200 | `ok` | Migrations complete, DB reachable, Redis reachable (if configured) |
+| `booting` | 503 | `booting` | Process started; schema sync hasn't begun yet (rare, narrow window) |
+| `migrating` | 503 | `migrating` | `orm.schema.updateSchema()` is running; **must return 503** to prevent LBs routing traffic to a DB undergoing DDL |
+| `ready` | 200 | `ok` | Schema sync complete, DB reachable, Redis reachable (if configured) |
 | `ready` but DB unreachable | 503 | `error` | Pool exhaustion or connectivity failure after successful boot |
 
 **Checks performed (only in `ready` state):**
@@ -495,11 +498,11 @@ The process tracks a `bootState` value that transitions through: `booting → mi
 - **Redis:** ping, only when `EVENT_BUS=redis`
 - **Artifact storage:** not checked (adds latency; disk/S3 failures surface via ingest errors instead)
 
-**Why readiness, not liveness:** A separate `GET /livez` (returns 200 whenever the process is running, ignoring DB and migrations) can be added later if k8s deployments need to distinguish "kill this pod" from "don't route to this pod". For MVP, single-container deployments don't benefit from the distinction — the Docker healthcheck behaviour we need is readiness (route to me when ready).
+**Why readiness, not liveness:** A separate `GET /livez` (returns 200 whenever the process is running, ignoring DB and schema sync) can be added later if k8s deployments need to distinguish "kill this pod" from "don't route to this pod". For MVP, single-container deployments don't benefit from the distinction — the Docker healthcheck behaviour we need is readiness (route to me when ready).
 
-**Migration race window (why this contract matters):** If `/health` returned 200 before migrations finished, a load balancer could route traffic to an instance whose schema doesn't match the application's expectations, producing 500s on every request until migrations complete. The compose `start_period: 30s` is a fallback, not a guarantee — migrations on a large DB or a cold Postgres can exceed 30s. The 503-during-migration contract is the real guarantee.
+**Schema sync window (why this contract matters):** If `/health` returned 200 before schema sync finished, a load balancer could route traffic to an instance whose schema doesn't match the application's expectations, producing 500s on every request until sync completes. The compose `start_period: 30s` is a fallback, not a guarantee — schema sync on a cold Postgres can take a few seconds. The 503-during-sync contract is the real guarantee.
 
-**Worker startup (note on `depends_on: service_healthy`):** `deployment-architecture.md` uses `depends_on: { api: { condition: service_healthy } }` on the `worker` container specifically to guarantee migrations have completed before the worker boots. That `depends_on` clause is load-bearing — it is the only reason the worker can safely assume migrations are applied.
+**Worker startup (note on `depends_on: service_healthy`):** `deployment-architecture.md` uses `depends_on: { api: { condition: service_healthy } }` on the `worker` container specifically to guarantee schema sync has completed before the worker boots. That `depends_on` clause is load-bearing — it is the only reason the worker can safely assume schema is applied.
 
 ---
 

@@ -1,17 +1,17 @@
 /**
- * SQLite migration integration test — INFRA-004
+ * SQLite schema-generator integration test — INFRA-005
  *
- * Initialises MikroORM with an in-memory SQLite database, runs all migrations,
- * and verifies the resulting schema matches entity expectations.
+ * Initialises MikroORM with an in-memory SQLite database, runs
+ * `orm.schema.update()`, and verifies the resulting schema matches
+ * entity expectations. Replaces the migration-based test from INFRA-004.
  *
- * Layer 2 (integration) — real ORM init, real migrations, real SQLite (in-memory).
+ * Layer 2 (integration) — real ORM init, real schema-generator, real SQLite (in-memory).
  *
  * @see skills/vitest-three-layer-testing.md §Layer 2
  * @see skills/mikroorm-dual-dialect.md
  */
 
 import { defineConfig, MikroORM } from '@mikro-orm/sqlite';
-import { Migrator } from '@mikro-orm/migrations';
 import { Organization } from '../../entities/Organization.js';
 import { User } from '../../entities/User.js';
 import { Project } from '../../entities/Project.js';
@@ -20,37 +20,49 @@ import { TestResult } from '../../entities/TestResult.js';
 import { TestArtifact } from '../../entities/TestArtifact.js';
 import { IngestIdempotencyKey } from '../../entities/IngestIdempotencyKey.js';
 
-describe('SQLite migrations', () => {
+describe('SQLite schema-generator', () => {
   let orm: MikroORM;
 
   beforeAll(async () => {
     // Build a self-contained config instead of importing the app config
     // to avoid issues with defineConfig return value spreading.
+    // No migrations config — schema-generator creates tables from entities.
     orm = await MikroORM.init(defineConfig({
       entities: [Organization, User, Project, TestRun, TestResult, TestArtifact, IngestIdempotencyKey],
       dbName: ':memory:',
       debug: false,
-      extensions: [Migrator],
-      migrations: {
-        path: './src/migrations/sqlite',
-        pathTs: './src/migrations/sqlite',
-        glob: '!(*.d).{js,ts}',
-      },
       schemaGenerator: {
-        skipTables: ['organization', 'user', 'session', 'account', 'verification'],
+        // Better Auth manages these tables — exclude from schema generation.
+        // Organization is NOT excluded — it is CTRFHub-owned (INFRA-005 pivot).
+        skipTables: ['user', 'session', 'account', 'verification', 'apikey'],
       },
     }));
 
-    await orm.migrator.up();
+    // Use schema-generator instead of migrator (INFRA-005 pivot).
+    // update() is idempotent — safe on fresh and existing DBs.
+    await orm.schema.update();
   });
 
   afterAll(async () => {
     if (orm) await orm.close(true);
   });
 
-  it('migrations apply cleanly without errors', async () => {
+  it('schema-generator applies cleanly without errors', async () => {
     expect(orm).toBeDefined();
     expect(await orm.isConnected()).toBe(true);
+  });
+
+  it('creates the organization table with expected columns', async () => {
+    const connection = orm.em.getConnection();
+    const result = await connection.execute("PRAGMA table_info('organization')");
+    const columns = (result as Array<{ name: string }>).map((r) => r.name);
+
+    expect(columns).toContain('id');
+    expect(columns).toContain('name');
+    expect(columns).toContain('slug');
+    expect(columns).toContain('logo');
+    expect(columns).toContain('metadata');
+    expect(columns).toContain('created_at');
   });
 
   it('creates the projects table with expected columns', async () => {
@@ -126,37 +138,6 @@ describe('SQLite migrations', () => {
     expect(columns).toContain('created_at');
   });
 
-  it('does NOT create Better Auth managed tables', async () => {
-    const connection = orm.em.getConnection();
-    const tables = await connection.execute(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'mikro_orm_%' AND name NOT LIKE 'sqlite_%'"
-    );
-    const tableNames = (tables as Array<{ name: string }>).map((t) => t.name);
-
-    expect(tableNames).not.toContain('organization');
-    expect(tableNames).not.toContain('user');
-    expect(tableNames).not.toContain('session');
-    expect(tableNames).not.toContain('account');
-    expect(tableNames).not.toContain('verification');
-  });
-
-  it('creates exactly 5 CTRFHub-owned tables', async () => {
-    const connection = orm.em.getConnection();
-    // Exclude internal SQLite tables (sqlite_sequence is created by autoincrement)
-    // and MikroORM's own tracking tables.
-    const tables = await connection.execute(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'mikro_orm_%' AND name NOT LIKE 'sqlite_%'"
-    );
-    const tableNames = (tables as Array<{ name: string }>).map((t) => t.name);
-
-    expect(tableNames).toContain('projects');
-    expect(tableNames).toContain('test_runs');
-    expect(tableNames).toContain('test_results');
-    expect(tableNames).toContain('test_artifacts');
-    expect(tableNames).toContain('ingest_idempotency_keys');
-    expect(tableNames).toHaveLength(5);
-  });
-
   it('creates the ingest_idempotency_keys table with expected columns', async () => {
     const connection = orm.em.getConnection();
     const result = await connection.execute("PRAGMA table_info('ingest_idempotency_keys')");
@@ -167,6 +148,46 @@ describe('SQLite migrations', () => {
     expect(columns).toContain('idempotency_key');
     expect(columns).toContain('test_run_id');
     expect(columns).toContain('created_at');
+  });
+
+  it('does NOT create Better Auth managed tables', async () => {
+    const connection = orm.em.getConnection();
+    const tables = await connection.execute(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    );
+    const tableNames = (tables as Array<{ name: string }>).map((t) => t.name);
+
+    // Better Auth-managed tables should NOT exist (schema-generator skips them)
+    expect(tableNames).not.toContain('user');
+    expect(tableNames).not.toContain('session');
+    expect(tableNames).not.toContain('account');
+    expect(tableNames).not.toContain('verification');
+    expect(tableNames).not.toContain('apikey');
+  });
+
+  it('creates exactly 6 CTRFHub-owned tables', async () => {
+    const connection = orm.em.getConnection();
+    // Exclude internal SQLite tables (sqlite_sequence is created by autoincrement).
+    // No mikro_orm_migrations table exists — schema-generator doesn't create one.
+    const tables = await connection.execute(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    );
+    const tableNames = (tables as Array<{ name: string }>).map((t) => t.name);
+
+    // 6 CTRFHub-owned tables (Organization is now included — INFRA-005 pivot).
+    // The 7th entity (User) is Better Auth-managed and in skipTables.
+    expect(tableNames).toContain('organization');
+    expect(tableNames).toContain('projects');
+    expect(tableNames).toContain('test_runs');
+    expect(tableNames).toContain('test_results');
+    expect(tableNames).toContain('test_artifacts');
+    expect(tableNames).toContain('ingest_idempotency_keys');
+    expect(tableNames).toHaveLength(6);
+  });
+
+  it('update() is idempotent — running twice causes no errors', async () => {
+    // Verify idempotent re-run: no DROP TABLE or destructive changes
+    await expect(orm.schema.update()).resolves.not.toThrow();
   });
 
   it('ingest_idempotency_keys.project_id has a FK to projects', async () => {
