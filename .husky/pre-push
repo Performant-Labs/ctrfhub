@@ -1,0 +1,7 @@
+# Pre-push gate: matches CI's "Lint & Typecheck" job exactly.
+# Bypass with `git push --no-verify` only if you know what you're doing
+# (e.g., pushing docs-only mid-flight on a chore branch).
+echo "[pre-push] running typecheck + lint..."
+npm run typecheck || { echo "[pre-push] typecheck failed"; exit 1; }
+npm run lint || { echo "[pre-push] lint failed"; exit 1; }
+echo "[pre-push] ok"
