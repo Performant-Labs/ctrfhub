@@ -136,7 +136,39 @@ SC groups runs by `ciBuildId` — a concept that links multiple parallel runs (p
 
 ---
 
-## 6. Summary Assessment
+## 6. Market Position — Where CTRFHub Fills the Gap
+
+### 6.1 Why Sorry Cypress users might switch to CTRFHub
+
+Sorry Cypress serves a narrow audience: **teams that run Cypress exclusively and need free parallelization**. The moment any of the following conditions apply, Sorry Cypress stops being adequate and CTRFHub becomes the natural next step:
+
+1. **Multi-framework test suites.** Most mature teams run more than one test framework — Playwright for E2E, Vitest/Jest for unit tests, maybe a mobile suite. Sorry Cypress can only report on Cypress runs. CTRFHub ingests any framework that has a CTRF reporter, giving teams a single pane of glass across their entire test portfolio. This is the primary gap CTRFHub fills.
+
+2. **Failure understanding at scale.** Sorry Cypress shows raw error messages and stack traces — nothing more. When a suite produces 200 failures in a run, a developer must manually read each one. CTRFHub's AI categorization pipeline (A1–A4) groups related failures, explains root causes in natural language, and surfaces patterns across runs. For teams drowning in test noise, this is a step change.
+
+3. **Trend visibility.** Sorry Cypress has no historical analysis — each run is viewed in isolation. There's no way to answer "is this test getting flakier over time?" or "how has our pass rate changed this sprint?" CTRFHub's run-over-run trend charts and AI-assisted flaky detection address this directly.
+
+4. **Security and team access control.** Sorry Cypress has zero dashboard authentication. Any network-accessible deployment is fully open — anyone can delete projects and runs. For teams with compliance requirements or multi-team organizations, this is a non-starter. CTRFHub's session-based auth with API key scoping provides the baseline security teams expect.
+
+5. **Operational simplicity.** Sorry Cypress requires 4 containers and a MongoDB instance. CTRFHub's single-binary deployment with embedded SQLite means a team can go from zero to a working dashboard in under a minute, with no external database to manage.
+
+6. **SQL-native data access.** Sorry Cypress stores data in MongoDB with denormalized documents. CTRFHub's normalized PostgreSQL/SQLite schema means teams can query their test data with standard SQL, build custom reports with any BI tool, and integrate with existing data infrastructure.
+
+### 6.2 Why Sorry Cypress users might NOT switch
+
+1. **Parallelization is the killer feature.** If a team's primary problem is "Cypress Dashboard is too expensive and we need free parallel test distribution," CTRFHub doesn't solve that problem. CTRFHub is a post-execution reporting tool — it doesn't orchestrate test runs. Teams that depend on Sorry Cypress's spec distribution across CI machines would need to keep it (or switch to a different parallelization solution) regardless.
+
+2. **Cypress-native workflow.** Sorry Cypress is a drop-in replacement for Cypress Dashboard — zero config change beyond pointing `CYPRESS_API_URL` at the director. Switching to CTRFHub requires installing a CTRF reporter for Cypress and modifying CI scripts to POST reports. It's not hard, but it's not zero-config either.
+
+3. **Notification maturity.** Sorry Cypress's hook system (Slack, GitHub, Bitbucket, Teams, GChat, generic webhook) is production-proven and richly configurable. CTRFHub's notification system is post-MVP. Teams that depend on Slack alerts with branch filtering or GitHub commit status checks would lose that capability during the transition.
+
+4. **Video playback and screenshot gallery.** Sorry Cypress has polished video-player integration with test-timestamp linking and inline screenshot galleries. CTRFHub's attachment handling is still MVP-level (local filesystem storage, basic display). Teams that heavily rely on visual debugging artifacts may find CTRFHub's current offering less refined.
+
+5. **No migration path.** Sorry Cypress data lives in MongoDB; CTRFHub uses PostgreSQL/SQLite. There's no import tool. Historical data would be left behind — teams can't bring their existing run history with them.
+
+---
+
+## 7. Summary Assessment
 
 Sorry Cypress is a **narrowly focused** tool that does one thing well: replace the Cypress Dashboard for parallel test orchestration. Its notification system is excellent, and its pluggable storage driver architecture is well-designed.
 

@@ -44,6 +44,7 @@
 2. Feature presence matrix (present / partial / absent / N/A) across all §4 dimensions
 3. Code-vs-docs reconciliation (features README claims but code doesn't deliver, or vice versa)
 4. Notable design choices worth comparing against CTRFHub's approach
+5. Market position — the gap CTRFHub fills over this tool, reasons users would switch, and reasons they wouldn't
 
 ### 1.3 Checkpoint
 
@@ -91,7 +92,7 @@ Completing Sorry Cypress surfaced 6 comparison dimensions that weren't in the or
 
 ### 2.2 Output
 
-`docs/planning/comparisons/allure2.md` with the same structure as Phase 1 output.
+`docs/planning/comparisons/allure2.md` with the same structure as Phase 1 output (sections 1–5, including market position analysis).
 
 ### 2.3 Checkpoint
 
@@ -139,7 +140,7 @@ ReportPortal is big enough to break into sub-phases internally:
 
 ### 3.2 Output
 
-`docs/planning/comparisons/reportportal.md` with the same structure as Phases 1–2.
+`docs/planning/comparisons/reportportal.md` with the same structure as Phases 1–2 (sections 1–5, including market position analysis).
 
 ### 3.3 Checkpoint
 
