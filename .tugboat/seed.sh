@@ -80,17 +80,18 @@ echo ">> Step 2: Creating organization (${ORG_SLUG})..."
 
 node -e "
 const Database = require('better-sqlite3');
-const db = new Database(process.env.SQLITE_PATH);
+let db;
 try {
+  db = new Database(process.env.SQLITE_PATH);
   db.prepare(
     'INSERT OR IGNORE INTO organization (id, name, slug, \"createdAt\") VALUES (?, ?, ?, datetime(\"now\"))'
   ).run('${ORG_ID}', '${ORG_NAME}', '${ORG_SLUG}');
   console.log('  [OK] Organization ready');
-  db.close();
 } catch (err) {
   console.error('  [FAIL] Organization create failed:', err.message);
-  db.close();
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  if (db) db.close();
 }
 "
 
@@ -100,26 +101,28 @@ echo ">> Step 3: Creating project (${PROJECT_SLUG})..."
 
 PROJECT_ID=$(node -e "
 const Database = require('better-sqlite3');
-const db = new Database(process.env.SQLITE_PATH);
+let db;
+let projectId;
 try {
+  db = new Database(process.env.SQLITE_PATH);
   // Check if project already exists
   const existing = db.prepare('SELECT id FROM projects WHERE slug = ?').get('${PROJECT_SLUG}');
   if (existing) {
-    console.log(existing.id);
-    db.close();
-    return;
+    projectId = existing.id;
+  } else {
+    // Insert new project
+    const now = new Date().toISOString();
+    const result = db.prepare(
+      'INSERT INTO projects (name, slug, \"idPrefix\", settings, \"createdAt\", \"updatedAt\", organization_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run('${PROJECT_NAME}', '${PROJECT_SLUG}', '${PROJECT_PREFIX}', '{}', now, now, '${ORG_ID}');
+    projectId = result.lastInsertRowid;
   }
-  // Insert new project
-  const now = new Date().toISOString();
-  const result = db.prepare(
-    'INSERT INTO projects (name, slug, \"idPrefix\", settings, \"createdAt\", \"updatedAt\", organization_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run('${PROJECT_NAME}', '${PROJECT_SLUG}', '${PROJECT_PREFIX}', '{}', now, now, '${ORG_ID}');
-  console.log(result.lastInsertRowid);
-  db.close();
+  console.log(projectId);
 } catch (err) {
   console.error('ERROR:' + err.message);
-  db.close();
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  if (db) db.close();
 }
 ")
 
