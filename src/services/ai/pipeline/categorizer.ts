@@ -186,11 +186,20 @@ export async function categorizeRun(
   );
 
   // Check if we actually reserved (affectedRows > 0).
-  // MikroORM's execute() returns an array for SELECT or an object with
-  // affectedRows for UPDATE, depending on driver. We need to check.
-  const affectedRows = typeof reserved === 'object' && 'affectedRows' in reserved
-    ? (reserved as { affectedRows: number }).affectedRows
-    : Array.isArray(reserved) ? reserved.length : 0;
+  // MikroORM's SQLite driver returns [] for UPDATE execute() (not an
+  // object with affectedRows). We use a follow-up query to get the
+  // count of rows changed by the last statement — `changes()` on
+  // SQLite, which is reliable across both in-memory and file-based DBs.
+  // On PostgreSQL the execute() return value includes affectedRows
+  // natively, so we check that first.
+  let affectedRows = 0;
+  if (typeof reserved === 'object' && !Array.isArray(reserved) && 'affectedRows' in reserved) {
+    affectedRows = (reserved as { affectedRows: number }).affectedRows;
+  } else {
+    // SQLite path — query the built-in changes() scalar function
+    const changesResult = await em.getConnection().execute('SELECT changes() as cnt');
+    affectedRows = (changesResult as Array<{ cnt: number }>)[0]?.cnt ?? 0;
+  }
 
   if (affectedRows === 0) {
     return; // Someone else reserved it, or max attempts reached

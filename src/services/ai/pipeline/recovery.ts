@@ -66,8 +66,14 @@ export async function recoverStalePipelineRows(
   // Actually, both SQLite and PG support: heartbeat_at < datetime('now', '-120 seconds')
   // is SQLite-only. PG uses: heartbeat_at < NOW() - INTERVAL '120 seconds'.
   //
-  // Instead, we compute the threshold in JS and pass it as a parameter.
-  const staleThreshold = new Date(Date.now() - HEARTBEAT_STALE_SECONDS * 1000);
+  // Instead, we compute the threshold in JS and pass it as a string
+  // formatted to match SQLite's `CURRENT_TIMESTAMP` output format
+  // ('YYYY-MM-DD HH:MM:SS'). A raw JS Date object would be serialized
+  // with a 'T' separator by MikroORM, breaking SQLite's text-based
+  // date comparison. This format also works on PostgreSQL (implicitly
+  // cast to timestamptz).
+  const staleThreshold = new Date(Date.now() - HEARTBEAT_STALE_SECONDS * 1000)
+    .toISOString().replace('T', ' ').slice(0, 19);
 
   await connection.execute(
     `UPDATE ai_pipeline_log
@@ -75,7 +81,7 @@ export async function recoverStalePipelineRows(
          worker_id = NULL,
          heartbeat_at = NULL
      WHERE status = 'running'
-       AND (heartbeat_at IS NULL OR heartbeat_at < ?)`,
+       AND (heartbeat_at IS NULL OR datetime(heartbeat_at) < datetime(?))`,
     [staleThreshold],
   );
 
