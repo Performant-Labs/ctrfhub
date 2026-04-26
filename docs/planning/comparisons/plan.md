@@ -98,6 +98,19 @@ Completing Sorry Cypress surfaced 6 comparison dimensions that weren't in the or
 
 **Pause** after completing `allure2.md`. Review with André before Phase 3 (the big one).
 
+### 2.4 Phase 2 retrospective — dimensions added
+
+Completing Allure 2 surfaced 6 more comparison dimensions. These are now added to the Phase 3 scope tables and Phase 4 synthesis:
+
+| New dimension | Why it matters | Discovered from |
+|---|---|---|
+| **Status taxonomy depth** | Allure's `failed` vs `broken` distinction separates product defects from test defects — high triage value | `Status.java`: 5 states vs CTRF's 4 |
+| **Execution step hierarchy** | Nested steps with per-step attachments give fine-grained debugging visibility | `TestResult.java`: beforeStages → testStage → afterStages → Steps |
+| **Export to monitoring systems** | Prometheus/InfluxDB export enables integration with existing observability stacks | `PrometheusExportPlugin`, `InfluxDbExportPlugin` |
+| **Issue tracker integration** | Jira/Xray export is distinct from notifications — pushes test data into project management | `jira-plugin`, `xray-plugin` |
+| **Rule-based vs AI categorization** | Three-way comparison (regex rules vs ML vs LLM) is more useful than two-way | `CategoriesPlugin` + `categories.json` |
+| **Complementary vs competitive positioning** | Some tools aren't purely competitive — could be used alongside CTRFHub | Allure as CI artifact + CTRFHub as live dashboard |
+
 ---
 
 ## Phase 3 — ReportPortal
@@ -111,12 +124,15 @@ ReportPortal is big enough to break into sub-phases internally:
 #### 3.1a — Architecture & deployment overview (~15 min)
 - `reportportal/` meta-repo: `docker-compose.yml`, docs, architecture diagrams
 - Count containers, map service topology, identify external dependencies (Postgres, Elasticsearch, RabbitMQ, MinIO)
-- **Deployment dependency count** — compare to CTRFHub's single-container story and SC's 4-container stack
+- **Deployment dependency count** — compare to CTRFHub's single-container story, SC's 4-container stack, and Allure's zero-deployment CLI
 - **Execution model** — live ingest server vs post-hoc reporter? How do results arrive?
+- **Complementary vs competitive** — is RP strictly either/or with CTRFHub, or could teams use both?
 
 #### 3.1b — Ingest API & data model (~30 min)
 - `service-api/src/main/java/` — look for REST controllers, DTOs, entity models
 - **Framework support breadth** — which frameworks/languages have RP client agents?
+- **Status taxonomy depth** — does RP have `failed` vs `broken` or richer statuses?
+- **Execution step hierarchy** — does RP support nested steps, before/after stages, per-step attachments?
 - Map the `launch → suite → test → log/attachment` hierarchy vs CTRFHub's `run → result` model
 - Check idempotency, auth on ingest, rate limiting, payload size limits
 - **CI build grouping** — does RP have a concept for grouping launches from the same pipeline?
@@ -125,6 +141,7 @@ ReportPortal is big enough to break into sub-phases internally:
 #### 3.1c — AI / auto-analyzer (~20 min)
 - `service-auto-analyzer/app/` — Python ML service
 - Identify: what models does it use? How does it categorize? Is it LLM-based or traditional ML?
+- **Rule-based vs ML vs LLM** — three-way comparison against Allure's regex categories and CTRFHub's LLM pipeline
 - **Flaky detection mechanism** — how does RP flag flaky tests? ML-based or rule-based?
 - Compare to CTRFHub's A1–A4 pipeline design
 - Check privacy/consent story, provider model, cost transparency
@@ -135,7 +152,9 @@ ReportPortal is big enough to break into sub-phases internally:
 - Search: Elasticsearch integration
 - Real-time: WebSocket/SSE
 - Notifications: email, Slack integrations
+- **Issue tracker integration** — Jira, Rally, or other PM tool integrations (distinct from notifications)
 - **Attachment/artifact storage** — how does RP store screenshots, logs, videos?
+- **Export to monitoring systems** — Prometheus, Grafana, or similar integrations?
 - Operational: retention, export, health, metrics
 
 ### 3.2 Output
@@ -161,18 +180,23 @@ ReportPortal is big enough to break into sub-phases internally:
 
 #### Section 1: Master comparison table
 
-A comprehensive comparison matrix with CTRFHub + 3 comparables across all dimensions (original §4 + 6 new dimensions from Phase 1 retro). Format:
+A comprehensive comparison matrix with CTRFHub + 3 comparables across all dimensions (original §4 + Phase 1 retro + Phase 2 retro). Format:
 
 | Dimension | CTRFHub MVP | Sorry Cypress | Allure 2 | ReportPortal |
 |---|---|---|---|---|
 | Execution model | Post-hoc ingest server | Run orchestrator | Static report generator | … |
-| Framework support | Any (via CTRF) | Cypress only | … | … |
-| Ingest API shape | REST (JSON + multipart) | … | N/A | … |
+| Framework support | Any (via CTRF) | Cypress only | 11+ languages | … |
+| Ingest API shape | REST (JSON + multipart) | Cypress wire protocol | N/A (filesystem) | … |
+| Status taxonomy | passed/failed/skipped/pending/other | passed/failed/skipped/pending | passed/failed/broken/skipped/unknown | … |
+| Step hierarchy | Flat (message + trace) | Flat | Nested (stages → steps → attachments) | … |
 | Auth model | Session + API token | None | N/A | … |
-| Flaky detection | Planned (AI-assisted) | Retry counter | … | … |
-| Attachment storage | Local filesystem | 6 cloud backends | … | … |
-| CI build grouping | Not yet | ciBuildId | … | … |
-| Deployment deps | 1 container (Node+SQLite) | 4 containers + MongoDB | 0 (static HTML) | … |
+| Categorization approach | LLM-based (A1 pipeline) | None | Rule-based regex | … |
+| Flaky detection | Planned (AI-assisted) | Retry counter | History-based algorithm | … |
+| Attachment storage | Local filesystem | 6 cloud backends | Per-step, MIME-typed | … |
+| CI build grouping | Not yet | ciBuildId | ExecutorPlugin (partial) | … |
+| Monitoring export | Not yet | None | Prometheus + InfluxDB | … |
+| Issue tracker integration | Not planned | None | Jira + Xray | … |
+| Deployment deps | 1 container (Node+SQLite) | 4 containers + MongoDB | 0 (CLI tool) | … |
 | … | … | … | … | … |
 
 #### Section 2: Findings that should route into `gaps.md`
@@ -193,6 +217,39 @@ Ambiguities in CTRFHub's spec surfaced by comparable behavior.
 #### Section 5: Recommended next steps
 
 0–3 new MVP stories, 0–N entries for `gaps.md`, 0–N entries for `parking-lot.md`.
+
+#### Section 6: Modern technology stack advantages
+
+A dedicated analysis of how CTRFHub's modern tech choices provide structural advantages over the comparable tools. This section should cover:
+
+**Runtime & framework**
+- **Fastify vs Express (SC) vs Spring Boot (RP)** — performance benchmarks, plugin ecosystem, developer experience
+- **Node.js vs JVM** — contributor pool size (npm ecosystem), startup time, memory footprint, deployment simplicity
+- **TypeScript** — type safety, refactoring confidence, IDE tooling vs Java's verbosity or plain JS's fragility
+
+**UI architecture**
+- **HTMX vs React SPA (SC, RP) vs static HTML (Allure)** — reduced client complexity, no build step for UI, progressive enhancement, SSR-first performance, smaller bundle sizes, accessibility by default
+- Why the industry trend toward hypermedia (htmx, Hotwire, LiveView) favors CTRFHub's approach for tool UIs
+
+**Data layer**
+- **MikroORM with dual-dialect (SQLite + PostgreSQL)** vs raw MongoDB driver (SC), no persistence (Allure), or Postgres-only with Elasticsearch (RP)
+- **SQLite as zero-config default** — single-file database, no external service dependency, instant deployment for individuals and small teams
+- **PostgreSQL upgrade path** — same codebase scales to production Postgres without rewrite
+
+**Auth & security**
+- **Better Auth** vs no auth (SC, Allure) vs custom Spring Security (RP) — modern auth library with session + API key + social login out of the box
+
+**AI-native design**
+- **Built for AI from day one** — the A1–A4 pipeline, provider-agnostic `AiProvider` interface, privacy-first consent gates, and reserve-execute-commit durability pattern are architectural choices that legacy tools cannot retrofit without major rework
+- **LLM-era positioning** — Allure's regex categories and RP's traditional ML auto-analyzer predate the LLM shift; CTRFHub's design assumes LLMs are the primary AI backend, with cost/privacy controls built in
+
+**Format & ecosystem**
+- **CTRF as a universal format** — framework-agnostic JSON standard with growing adapter ecosystem vs proprietary wire protocols (SC) or tool-specific result formats (Allure, RP)
+- **Contributor accessibility** — Node.js/TypeScript has a larger potential contributor pool than JVM (Allure, RP) or the niche intersection of Express+React+GraphQL+MongoDB (SC)
+
+**Deployment**
+- **Single-binary / single-container** — CTRFHub's deployment story (one container, zero external services) vs SC (4 containers + MongoDB) vs RP (6+ containers + Postgres + Elasticsearch + RabbitMQ + MinIO)
+- Why this matters for adoption: teams can evaluate CTRFHub in 60 seconds, not 60 minutes
 
 ### 4.3 Final checkpoint
 
