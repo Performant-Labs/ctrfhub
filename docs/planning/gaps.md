@@ -67,7 +67,7 @@ Severity: **P0** = blocks implementation; **P1** = factual error / contradiction
 ### G-P1-003 — Wrong Anthropic model name `claude-haiku-3-5`
 **Source:** `gap-review-merged.md #8`
 **Fix:** Replace with `claude-haiku-4-5-20251001` (Haiku 4.5). In `ai-features.md` default models table.
-**Status:** Open — fix before AI-001
+**Status:** ✅ **Resolved** — `ai-features.md` line 47 already shows the correct model name `claude-haiku-4-5-20251001`; the fix was applied to the doc prior to this gaps.md status flip and the Open status was stale. Confirmed during AI-001 brief preparation (2026-04-25).
 
 ---
 
@@ -101,7 +101,7 @@ Severity: **P0** = blocks implementation; **P1** = factual error / contradiction
 **Affects:** CTRF-002 (current), AI-002 (subscribes to `run.ingested`), SSE-001 (publishes UI updates), and any future story emitting or consuming run lifecycle events
 **Question:** `tasks.md §CTRF-002`, `product.md §Feature 1`, `architecture.md §350`, and `ai-features.md §A1` all use **`run.ingested`** (the AI pipeline trigger). `testing-strategy.md §Example` line 159 and `database-design.md §SSE` line 1076 use **`run.created`** for the SSE UI notification stream. CTRF-002 ships `run.ingested` per the canonical sources.
 **Required action:** Decide whether these are (a) the same event under inconsistent names — in which case the SSE/testing-strategy references should be normalized to `run.ingested` — or (b) two distinct events: one for the AI pipeline trigger (`run.ingested`) and one for SSE UI updates (`run.created`). If (b), CTRF-002 needs a follow-up commit adding a `RunEvents.RUN_CREATED` constant and a second `eventBus.publish()` call; if (a), update the two stale references and close.
-**Status:** Open — Argos surfaces, André to decide. CTRF-002 implementation not blocked.
+**Status:** ✅ **Resolved** — `chore(spec): normalize run.created → run.ingested across testing-strategy.md and database-design.md` (PR #26). André chose option (a) on 2026-04-25: MVP has no streaming-aggregation use case, so `run.ingested` is the canonical name across the AI pipeline trigger, the SSE notification stream, and integration-test fixtures. `parking-lot.md`'s `run.created` reference is preserved for the post-MVP streaming feature where the name may diverge again.
 
 ---
 
@@ -110,7 +110,7 @@ Severity: **P0** = blocks implementation; **P1** = factual error / contradiction
 **Affects:** Future token-management UI (likely SET-001 / project settings tab), CTRF-002's deferred `?on_duplicate=replace|error` modes, any rate-limit-by-token surface
 **Question:** DD-012 specifies per-token rate limits via `project_tokens.rate_limit_per_hour`; DD-019 specifies `?on_duplicate=replace|error` modes gated on `ingest:replace` permission bits on tokens. Both designs assume a `project_tokens` table that doesn't exist. AUTH-001 established Better Auth's `apikey` table as the canonical token store, with metadata in `apikey.metadata` (JSON). CTRF-002 simplified to a global 120 req/hour keyed on the `x-api-token` header value, and deferred the `?on_duplicate=` modes entirely.
 **Required action:** When the token-management UI story is designed (likely as part of SET-001 project settings, or a dedicated token-management story), confirm whether per-token limits and permissions live in `apikey.metadata` (JSON shape to be defined), in a new dedicated `project_tokens` table, or in some hybrid. Then: rewire CTRF-002's `keyGenerator` to read from the agreed source, and unblock the deferred `?on_duplicate=` modes by adding the corresponding permission check.
-**Status:** Open — Argos surfaces, André to decide alongside SET-001 design. CTRF-002 implementation not blocked (defaults to global limit + `return_existing` mode).
+**Status:** ✅ **Resolved** — `chore(spec): align DD-012/DD-019/§4.20/SET-001 with Better Auth apikey as canonical token store` (PR #27). André chose option (b′) on 2026-04-25: per-token policy (rate limits, permissions) inlines into `apikey.metadata` JSON; `project_tokens` table marked DEPRECATED. CTRF-002's keyGenerator wiring (read `metadata.rateLimit?.perHour`) is a small future follow-up; SET-001's eventual brief picks up the token-management UI implementation.
 
 ---
 
