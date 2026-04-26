@@ -38,6 +38,7 @@ services:
   app:
     image: node:22-alpine
     default: true
+    expose: "3000"
     environment:
       # SQLITE_PATH triggers MikroORM's SQLite dialect (mikro-orm.config.ts
       # selects PG when DATABASE_URL is set, SQLite otherwise).
