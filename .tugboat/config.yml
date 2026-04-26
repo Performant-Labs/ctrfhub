@@ -29,7 +29,7 @@ services:
   # db -- PostgreSQL 16 (same version as compose.yml and CI)
   # ---------------------------------------------------------------------------
   db:
-    image: tugboatqa/postgres:16
+    image: tugboatqa/postgres:14
     environment:
       POSTGRES_DB: ctrfhub
       POSTGRES_USER: ctrfhub
