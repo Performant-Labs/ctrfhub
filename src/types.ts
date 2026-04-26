@@ -36,14 +36,13 @@ export type { EventBus };
 /**
  * AI provider abstraction for failure categorization and summarization.
  *
- * Implementations: `OpenAiProvider`, `AnthropicProvider`, `GroqProvider`
- * (selected by `AI_PROVIDER` env). Test double: `MockAiProvider`.
- * All ship in AI-001.
+ * The canonical interface and payload types live in `src/services/ai/types.ts`.
+ * Re-exported here so downstream code has one canonical import path.
+ *
+ * @see src/services/ai/types.ts
  */
-export interface AiProvider {
-  /** Release any held resources (HTTP clients, etc.). */
-  close(): Promise<void>;
-}
+import type { AiProvider } from './services/ai/types.js';
+export type { AiProvider };
 
 /**
  * Options for the `buildApp()` factory.

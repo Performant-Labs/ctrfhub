@@ -51,6 +51,7 @@ import { User } from './entities/index.js';
 import { registerAuthRoutes } from './modules/auth/routes.js';
 import ingestPlugin from './modules/ingest/routes.js';
 import { MemoryEventBus } from './services/event-bus.js';
+import { createAiProvider } from './services/ai/index.js';
 
 // ---------------------------------------------------------------------------
 // Module-private: resolve __dirname for ESM (needed by @fastify/static root)
@@ -324,10 +325,18 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     });
   }
 
-  if (options.aiProvider) {
-    app.decorate('aiProvider', options.aiProvider);
+  // AiProvider — injected by tests via `options.aiProvider`; in production
+  // constructed from env vars when `AI_PROVIDER` is set. Undefined when AI
+  // is not configured (features silently disabled — no nagging).
+  const aiProvider = options.aiProvider ?? (
+    testing || !process.env['AI_PROVIDER']
+      ? undefined
+      : createAiProvider()
+  );
+  if (aiProvider) {
+    app.decorate('aiProvider', aiProvider);
     app.addHook('onClose', async () => {
-      await options.aiProvider!.close();
+      await aiProvider.close();
     });
   }
 
