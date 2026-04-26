@@ -7,9 +7,9 @@
 #   e2e        → Playwright E2E (needs integration; real app + Postgres service)
 #
 # Dog-food rule (architecture.md §CI / CD): the e2e job ingests its own CTRF
-# report back to a staging CTRFHub instance. The ingest step uses
-# `continue-on-error: true` for the first cut — staging outages must not
-# red-light PRs. CI-003 (Tugboat) will harden this path.
+# report into the Tugboat per-PR preview. The ingest step gates merge —
+# if the preview is unhealthy or ingest fails, the PR cannot merge.
+# (CI-003 hardened this path; CI-001's placeholder has been replaced.)
 #
 # Self-hosted runners are FORBIDDEN (cleanup/strip-self-hosted-runner-vestige).
 # All jobs run on GitHub-hosted ubuntu-latest.
@@ -203,24 +203,23 @@ jobs:
           path: e2e/ctrf/report.json
           retention-days: 30
 
-      # Dog-food rule: POST the CTRF report to the staging CTRFHub instance.
-      # `continue-on-error: true` — staging outages must not block PR merges.
-      # CI-003 (Tugboat per-PR previews) will harden this step.
+      # Dog-food rule: POST the CTRF report to the Tugboat per-PR preview.
+      # This step gates merge — if the preview is unhealthy or ingest fails,
+      # the PR cannot merge. (CI-003 hardened path replaces CI-001 placeholder.)
+      #
       # Configure these repository variables/secrets to enable:
-      #   vars.CTRFHUB_STAGING_URL   — e.g. https://staging.ctrfhub.io
-      #   vars.CTRFHUB_PROJECT_SLUG  — e.g. ctrfhub-e2e
-      #   secrets.CTRFHUB_TOKEN      — project-scoped ctrf_* API token
-      - name: Ingest E2E CTRF report into CTRFHub staging (dog-food)
-        if: always() && vars.CTRFHUB_STAGING_URL != ''
-        continue-on-error: true
+      #   vars.CTRFHUB_PREVIEW_URL       — Tugboat preview base URL
+      #   secrets.CTRFHUB_PREVIEW_API_KEY — ctrf_* API key from the seeded preview
+      - name: Ingest E2E CTRF report into CTRFHub preview (dog-food)
+        if: always() && vars.CTRFHUB_PREVIEW_URL != ''
         run: |
           if [ ! -f e2e/ctrf/report.json ]; then
             echo "No CTRF report found — skipping ingest (tests may have been skipped)"
             exit 0
           fi
           curl -sf -X POST \
-            "${{ vars.CTRFHUB_STAGING_URL }}/api/v1/projects/${{ vars.CTRFHUB_PROJECT_SLUG }}/runs" \
-            -H "x-api-token: ${{ secrets.CTRFHUB_TOKEN }}" \
+            "${{ vars.CTRFHUB_PREVIEW_URL }}/api/v1/projects/sample/runs" \
+            -H "x-api-token: ${{ secrets.CTRFHUB_PREVIEW_API_KEY }}" \
             -H "content-type: application/json" \
             -d @e2e/ctrf/report.json
-          echo "CTRF report ingested successfully"
+          echo "CTRF report ingested into preview successfully"

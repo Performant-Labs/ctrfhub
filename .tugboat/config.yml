@@ -1,0 +1,93 @@
+# CTRFHub — Tugboat per-PR Preview Configuration
+#
+# Defines two services: a PostgreSQL database and the CTRFHub Node.js app.
+# Every PR creates an isolated preview environment with a seeded admin
+# user, organization, project, and API key for dog-food CTRF ingestion.
+#
+# Build stages:
+#   init   — install OS packages and npm dependencies (cached across rebuilds)
+#   update — compile TypeScript + Tailwind CSS (re-runs on refresh)
+#   build  — start the app, run seed script, verify health
+#
+# Environment variables (set in Tugboat's Repository Settings, NOT here):
+#   TUGBOAT_ADMIN_EMAIL    — admin user email for the preview
+#   TUGBOAT_ADMIN_PASSWORD — admin user password (min 8 chars)
+#   BETTER_AUTH_SECRET     — 32+ char session signing key
+#   SESSION_SECRET         — 32+ char session secret (can match BETTER_AUTH_SECRET)
+#
+# Anti-patterns (per .argos/CI-003/brief.md):
+#   - No hardcoded credentials in this file
+#   - No separate "run migrations" step (schema-generator runs at app boot)
+#   - No teardown script (Tugboat manages preview lifecycle)
+#
+# See: docs/planning/architecture.md §Production Deployment
+# See: skills/better-auth-session-and-api-tokens.md
+# See: skills/ctrf-ingest-validation.md
+
+services:
+  # ---------------------------------------------------------------------------
+  # db — PostgreSQL 16 (same version as compose.yml and CI)
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ctrfhub
+      POSTGRES_USER: ctrfhub
+      POSTGRES_PASSWORD: ctrfhub
+
+  # ---------------------------------------------------------------------------
+  # app — CTRFHub Node.js application
+  # ---------------------------------------------------------------------------
+  app:
+    image: node:22-alpine
+    default: true
+    depends: db
+    environment:
+      DATABASE_URL: postgresql://ctrfhub:ctrfhub@db:5432/ctrfhub
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${TUGBOAT_DEFAULT_SERVICE_URL}
+      SESSION_SECRET: ${SESSION_SECRET}
+      PUBLIC_URL: ${TUGBOAT_DEFAULT_SERVICE_URL}
+      PORT: "3000"
+      NODE_ENV: production
+      LOG_LEVEL: info
+
+    commands:
+      # ── init: system packages + npm install (cached, skipped on refresh) ──
+      init:
+        # Native build toolchain for better-sqlite3 compilation + wget for healthchecks
+        - apk add --no-cache python3 make g++ wget
+        # Install all dependencies (including devDeps needed for tsc + tailwind build)
+        - npm ci
+
+      # ── update: compile + start app (re-runs on PR code changes / refresh) ──
+      update:
+        # Compile TypeScript → dist/ and build Tailwind CSS → dist/assets/
+        - npm run build
+        # Start the app in the background. Schema-generator (INFRA-005) syncs
+        # the DB at boot — no separate migration step needed.
+        - node dist/index.js &
+        # Wait for the app to become healthy (schema sync + Better Auth migration).
+        # Max 60 seconds with 2-second intervals.
+        - |
+          for i in $(seq 1 30); do
+            STATUS=$(wget -qO- http://localhost:3000/health 2>/dev/null | grep -o '"status":"ok"' || true)
+            if [ -n "$STATUS" ]; then
+              echo "✅ App is healthy"
+              break
+            fi
+            echo "⏳ Waiting for app... attempt $i/30"
+            sleep 2
+          done
+          if [ -z "$STATUS" ]; then
+            echo "❌ App did not become healthy within 60s"
+            wget -qO- http://localhost:3000/health 2>/dev/null || true
+            exit 1
+          fi
+
+      # ── build: seed data + final verification (runs on every build) ──
+      build:
+        # Run the idempotent seed script to create admin, org, project, and API key.
+        - bash "${TUGBOAT_ROOT}/.tugboat/seed.sh"
+        # Final health verification
+        - wget -qO- http://localhost:3000/health
