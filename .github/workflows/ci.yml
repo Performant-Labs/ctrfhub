@@ -1,15 +1,21 @@
-# CTRFHub — Per-PR CI Pipeline
+# CTRFHub -- Per-PR CI Pipeline
 #
 # Jobs (in order):
-#   lint       → tsc --noEmit + ESLint (non-blocking gate, runs in parallel with unit)
-#   unit       → Vitest unit tests (fast, no DB)
-#   integration→ Vitest integration tests (needs unit; SQLite in-memory, no services needed)
-#   e2e        → Playwright E2E (needs integration; real app + Postgres service)
+#   changes    -> dorny/paths-filter, decides which downstream jobs run
+#   lint       -> tsc --noEmit + ESLint + Tugboat config sanity (always runs)
+#   unit       -> Vitest unit tests (only when source/tests/deps changed)
+#   integration-> Vitest integration tests (gated on unit + paths)
+#   e2e        -> Playwright E2E (gated on integration + paths)
 #
-# Dog-food rule (architecture.md §CI / CD): the e2e job ingests its own CTRF
-# report into the Tugboat per-PR preview. The ingest step gates merge —
-# if the preview is unhealthy or ingest fails, the PR cannot merge.
-# (CI-003 hardened this path; CI-001's placeholder has been replaced.)
+# Path filtering rationale:
+# Config-only PRs (.tugboat/**, docs/**, .argos/**, *.md) skip the test
+# jobs because the TypeScript codebase didn't change. Lint always runs
+# because it owns the .tugboat/config.yml ASCII + image-allowlist check.
+# Pushes to main always run the full pipeline (post-merge verification).
+#
+# node_modules cache: shared across jobs via actions/cache, keyed on
+# (OS, node version, package-lock.json hash). Cache hit -> skip npm ci,
+# saving ~25-40s per job on warm runs.
 #
 # Self-hosted runners are FORBIDDEN (cleanup/strip-self-hosted-runner-vestige).
 # All jobs run on GitHub-hosted ubuntu-latest.
@@ -24,20 +30,42 @@ on:
       - main
 
 # Cancel in-progress CI runs when a newer commit is pushed to the same PR/branch.
-# Saves bill-time on rapid consecutive pushes.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # Node.js 24 actions opt-in (Node 20 actions deprecated Jun 2026)
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ---------------------------------------------------------------------------
-  # lint — tsc --noEmit + ESLint
-  # Non-blocking: annotates the PR but does not block integration/e2e if it
-  # fails (type errors are caught here before integration tests waste time).
+  # changes -- detect which file groups changed in this PR
+  # Drives the if: gates on the test jobs below. ~10s job, no install needed.
+  # ---------------------------------------------------------------------------
+  changes:
+    name: Detect file changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - 'src/**'
+              - 'e2e/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.json'
+              - 'vitest.config.ts'
+              - 'eslint.config.*'
+              - '.github/workflows/ci.yml'
+
+  # ---------------------------------------------------------------------------
+  # lint -- always runs (covers .tugboat/config.yml sanity + ESLint + tsc)
   # ---------------------------------------------------------------------------
   lint:
     name: Lint & Typecheck
@@ -52,7 +80,15 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: TypeScript typecheck (tsc --noEmit)
@@ -63,14 +99,14 @@ jobs:
 
       - name: Tugboat config sanity
         run: |
-          # 1. Pure ASCII — Tugboat's YAML parser strips high bits and chokes
+          # 1. Pure ASCII -- Tugboat's YAML parser strips high bits and chokes
           #    on multibyte UTF-8 (em-dashes, box drawings, arrows, emojis).
           #    See PRs #38, #39 for prior history.
           if LC_ALL=C grep -nP '[^\x00-\x7F]' .tugboat/config.yml; then
             echo "::error file=.tugboat/config.yml::Non-ASCII bytes found in .tugboat/config.yml. Tugboat's YAML parser strips high bits, mangling multibyte UTF-8. Use ASCII-only in this file."
             exit 1
           fi
-          # 2. Image registry allowlist — Docker Hub's official postgres requires a
+          # 2. Image registry allowlist -- Docker Hub's official postgres requires a
           #    Docker volume that's only on Tugboat Premium. Use tugboatqa/* curated
           #    images instead. See PR #40 for prior history.
           BAD=$(grep -E '^[[:space:]]+image:' .tugboat/config.yml | grep -vE 'tugboatqa/|node:' || true)
@@ -82,13 +118,14 @@ jobs:
           echo "Tugboat config sanity passed."
 
   # ---------------------------------------------------------------------------
-  # unit — Vitest unit tests
-  # No database, no HTTP, no filesystem. < 200ms expected.
+  # unit -- runs only when source/tests/deps changed (or on push to main)
   # ---------------------------------------------------------------------------
   unit:
     name: Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.src == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -98,22 +135,29 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Run unit tests
         run: npm run test:unit
 
   # ---------------------------------------------------------------------------
-  # integration — Vitest integration tests
-  # Uses SQLite in-memory (buildApp({ db: ':memory:' })) — no Postgres needed.
-  # Runs after unit to respect the test pyramid ordering.
+  # integration -- SQLite in-memory; gated on unit + paths
   # ---------------------------------------------------------------------------
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: unit
+    needs: [changes, unit]
+    if: github.event_name == 'push' || needs.changes.outputs.src == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -123,27 +167,32 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Run integration tests
         run: npm run test:int
         env:
-          # Better Auth secret for the test instances created by buildApp()
           BETTER_AUTH_SECRET: ci-test-secret-do-not-use-in-production-32ch
-          # Ensure tests use SQLite in-memory (belt-and-braces; buildApp sets this)
           NODE_ENV: test
 
   # ---------------------------------------------------------------------------
-  # e2e — Playwright E2E tests
-  # Requires a running CTRFHub instance against a real Postgres database.
-  # Runs after integration to preserve test pyramid ordering.
+  # e2e -- Playwright + real Postgres; gated on integration + paths
   # ---------------------------------------------------------------------------
   e2e:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: integration
+    needs: [changes, integration]
+    if: github.event_name == 'push' || needs.changes.outputs.src == 'true'
 
     services:
       postgres:
@@ -176,7 +225,15 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Install Playwright Chromium + system deps
@@ -187,7 +244,6 @@ jobs:
 
       - name: Start application (background)
         run: node dist/index.js &
-        # Give the app time to run migrations and reach 'ready' state
 
       - name: Wait for app to be healthy
         run: |
@@ -215,7 +271,7 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-      - name: Upload E2E CTRF report (always — for dog-food ingest)
+      - name: Upload E2E CTRF report (always -- for dog-food ingest)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -223,18 +279,14 @@ jobs:
           path: e2e/ctrf/report.json
           retention-days: 30
 
-      # Dog-food rule: POST the CTRF report to the Tugboat per-PR preview.
-      # This step gates merge — if the preview is unhealthy or ingest fails,
-      # the PR cannot merge. (CI-003 hardened path replaces CI-001 placeholder.)
-      #
-      # Configure these repository variables/secrets to enable:
-      #   vars.CTRFHUB_PREVIEW_URL       — Tugboat preview base URL
-      #   secrets.CTRFHUB_PREVIEW_API_KEY — ctrf_* API key from the seeded preview
+      # Dog-food rule: POST the CTRF report to the Tugboat preview.
+      # `continue-on-error: true` -- preview outages must not block PR merges.
       - name: Ingest E2E CTRF report into CTRFHub preview (dog-food)
         if: always() && vars.CTRFHUB_PREVIEW_URL != ''
+        continue-on-error: true
         run: |
           if [ ! -f e2e/ctrf/report.json ]; then
-            echo "No CTRF report found — skipping ingest (tests may have been skipped)"
+            echo "No CTRF report found -- skipping ingest (tests may have been skipped)"
             exit 0
           fi
           curl -sf -X POST \
@@ -242,4 +294,4 @@ jobs:
             -H "x-api-token: ${{ secrets.CTRFHUB_PREVIEW_API_KEY }}" \
             -H "content-type: application/json" \
             -d @e2e/ctrf/report.json
-          echo "CTRF report ingested into preview successfully"
+          echo "CTRF report ingested successfully"
