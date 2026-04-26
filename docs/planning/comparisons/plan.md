@@ -51,6 +51,19 @@
 
 Purpose: Sorry Cypress is the fastest review (~30 min). After completing it, we'll have a proven template and may want to adjust the depth or dimensions for the heavier comparables.
 
+### 1.4 Phase 1 retrospective — dimensions added
+
+Completing Sorry Cypress surfaced 6 comparison dimensions that weren't in the original scope tables. These are now added to the Phase 2 and Phase 3 scope tables below:
+
+| New dimension | Why it matters | Discovered from |
+|---|---|---|
+| **Framework support breadth** | The single biggest differentiator — SC is Cypress-only, CTRFHub is any-framework via CTRF | SC's entire ingest API is Cypress wire protocol |
+| **Execution model** | Orchestrator vs post-hoc reporter vs static generator — determines which features are N/A vs comparable | SC orchestrates runs; CTRFHub receives completed reports |
+| **Attachment/artifact storage** | SC has 6 cloud storage drivers — a significant operational feature CTRFHub lacks | `director/src/screenshots/` — pluggable driver pattern |
+| **Flaky detection mechanism** | Distinct from AI — some tools detect flakiness via rules or retries, not ML | SC tracks `flaky` count from Cypress retry data |
+| **CI build grouping** | Grouping related runs from the same pipeline is a feature CTRFHub doesn't have | SC's `ciBuildId` concept |
+| **Deployment dependency count** | More specific than "self-hosting" — the number of required containers/services is very revealing | SC requires 4 containers + MongoDB |
+
 ---
 
 ## Phase 2 — Allure 2
@@ -61,15 +74,20 @@ Purpose: Sorry Cypress is the fastest review (~30 min). After completing it, we'
 
 | Dimension | Source in allure2 repo | How to verify |
 |---|---|---|
+| **Execution model** | Allure is a static report generator — confirm no server mode | check for HTTP/server code |
+| **Framework support breadth** | Allure has adaptors for many frameworks — catalog which ones | check `allure-*` modules, docs |
 | **Data model** | `allure-generator/src/main/java/io/qameta/allure/` — look for entity/model classes | grep for Category, Defect, TestResult, Status |
 | **Defect taxonomy** | categories.json, defect classification logic | grep for defect, category, flaky, broken |
+| **Flaky detection mechanism** | How does Allure detect/flag flaky tests? | grep for flaky, retry, rerun, unstable |
 | **Report structure** | `allure-generator/` — the report generation pipeline | trace what sections/pages the generator produces |
 | **History correlation** | grep for history, trend, retry, rerun | check how Allure links results across runs |
 | **Plugin system** | `allure-plugin-api/` + `plugins/` | catalog what's pluggable |
 | **UI/dashboard** | Built into the static report — HTML/JS output | look at generated report structure |
 | **Search** | Likely in-browser search only | verify |
 | **AI / categorization** | Likely absent — Allure uses rule-based categories | confirm rule-based vs ML |
+| **Attachment/artifact storage** | How does Allure handle screenshots, logs, custom attachments? | grep for attachment, screenshot |
 | **Auth / self-hosting** | Static report = no auth, no hosting | confirm there's no server mode |
+| **Deployment dependency count** | Likely zero (static HTML) — confirm | check for required services |
 
 ### 2.2 Output
 
@@ -92,17 +110,21 @@ ReportPortal is big enough to break into sub-phases internally:
 #### 3.1a — Architecture & deployment overview (~15 min)
 - `reportportal/` meta-repo: `docker-compose.yml`, docs, architecture diagrams
 - Count containers, map service topology, identify external dependencies (Postgres, Elasticsearch, RabbitMQ, MinIO)
-- Compare deployment complexity to CTRFHub's single-container story
+- **Deployment dependency count** — compare to CTRFHub's single-container story and SC's 4-container stack
+- **Execution model** — live ingest server vs post-hoc reporter? How do results arrive?
 
 #### 3.1b — Ingest API & data model (~30 min)
 - `service-api/src/main/java/` — look for REST controllers, DTOs, entity models
+- **Framework support breadth** — which frameworks/languages have RP client agents?
 - Map the `launch → suite → test → log/attachment` hierarchy vs CTRFHub's `run → result` model
 - Check idempotency, auth on ingest, rate limiting, payload size limits
+- **CI build grouping** — does RP have a concept for grouping launches from the same pipeline?
 - `migrations/` — scan Postgres schema for table structure and compare to CTRFHub's `database-design.md`
 
 #### 3.1c — AI / auto-analyzer (~20 min)
 - `service-auto-analyzer/app/` — Python ML service
 - Identify: what models does it use? How does it categorize? Is it LLM-based or traditional ML?
+- **Flaky detection mechanism** — how does RP flag flaky tests? ML-based or rule-based?
 - Compare to CTRFHub's A1–A4 pipeline design
 - Check privacy/consent story, provider model, cost transparency
 
@@ -112,6 +134,7 @@ ReportPortal is big enough to break into sub-phases internally:
 - Search: Elasticsearch integration
 - Real-time: WebSocket/SSE
 - Notifications: email, Slack integrations
+- **Attachment/artifact storage** — how does RP store screenshots, logs, videos?
 - Operational: retention, export, health, metrics
 
 ### 3.2 Output
@@ -137,12 +160,18 @@ ReportPortal is big enough to break into sub-phases internally:
 
 #### Section 1: Master comparison table
 
-A comprehensive comparison matrix with CTRFHub + 3 comparables across all §4 dimensions. Format:
+A comprehensive comparison matrix with CTRFHub + 3 comparables across all dimensions (original §4 + 6 new dimensions from Phase 1 retro). Format:
 
 | Dimension | CTRFHub MVP | Sorry Cypress | Allure 2 | ReportPortal |
 |---|---|---|---|---|
+| Execution model | Post-hoc ingest server | Run orchestrator | Static report generator | … |
+| Framework support | Any (via CTRF) | Cypress only | … | … |
 | Ingest API shape | REST (JSON + multipart) | … | N/A | … |
-| Auth model | Session + API token | … | N/A | … |
+| Auth model | Session + API token | None | N/A | … |
+| Flaky detection | Planned (AI-assisted) | Retry counter | … | … |
+| Attachment storage | Local filesystem | 6 cloud backends | … | … |
+| CI build grouping | Not yet | ciBuildId | … | … |
+| Deployment deps | 1 container (Node+SQLite) | 4 containers + MongoDB | 0 (static HTML) | … |
 | … | … | … | … | … |
 
 #### Section 2: Findings that should route into `gaps.md`
