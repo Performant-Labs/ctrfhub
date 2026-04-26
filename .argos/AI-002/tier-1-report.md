@@ -1,95 +1,59 @@
 # Tier 1 Headless Report — AI-002
 
-**Executed:** 2026-04-26 08:40
-**Method:** `fastify.inject()` / `vitest` / `categorizeRun()` direct call (no browser)
+**Executed:** 2026-04-26 09:01
+**Method:** `buildApp({ testing: true, db: ':memory:', eventBus, aiProvider })` + direct function calls (no browser)
 
 ## Checks
 
-| # | What is being verified | Command | Expected | Actual | Status |
+| # | What is being verified | Method | Expected | Actual | Status |
 |---|---|---|---|---|---|
-| 1 | `CategorizeOutputSchema` accepts valid output | `CategorizeOutputSchema.safeParse(valid)` | `success: true` | `success: true` | ✓ |
-| 2 | `CategorizeOutputSchema` rejects invalid category | `.safeParse({category: 'invalid'})` | `success: false` | `success: false` | ✓ |
-| 3 | `CategorizeOutputSchema` rejects confidence out of bounds | `.safeParse({confidence: 1.1})` | `success: false` | `success: false` | ✓ |
-| 4 | `AiCategoryEnum` accepts all 5 valid categories | `.safeParse(each)` | `success: true` | `success: true` | ✓ |
-| 5 | Schema-generator creates `ai_pipeline_log` table (SQLite) | `PRAGMA table_info('ai_pipeline_log')` | All 11 columns present | All 11 columns present | ✓ |
-| 6 | Schema-generator creates 7 CTRFHub tables | `SELECT name FROM sqlite_master` | 7 tables | 7 tables | ✓ |
-| 7 | `ai_pipeline_log.test_run_id` FK → `test_runs` | `PRAGMA foreign_key_list` | FK exists | FK exists | ✓ |
-| 8 | `test_results` has `ai_category_model`, `ai_category_at` columns | `PRAGMA table_info` | Columns present | Columns present | ✓ |
-| 9 | Consent gate: skips when `AI_CLOUD_PIPELINE` unset | Direct call to `categorizeRun()` | 0 provider calls | 0 provider calls | ✓ |
-| 10 | Consent gate: skips when `aiCloudAckAt` NULL | Direct call to `categorizeRun()` | 0 provider calls | 0 provider calls | ✓ |
-| 11 | Skips when run has zero failed results | Direct call to `categorizeRun()` | 0 provider calls | 0 provider calls | ✓ |
-| 12 | No real LLM SDK imports in test file | Regex scan of test source | 0 matches | 0 matches | ✓ |
-| 13 | Terminal-fails exhausted-attempt rows on boot | `recoverStalePipelineRows()` | `status = 'failed'` | `status = 'failed'` | ✓ |
-| 14 | **BLOCKED** — Consent gate: runs when both gates pass | `categorizeRun()` | 1 provider call | 0 provider calls | ✗ |
-| 15 | **BLOCKED** — Happy path reserve→execute→commit | `categorizeRun()` | log row `status='done'` | never reaches execution | ✗ |
-| 16 | **BLOCKED** — Batch size 20 (50 results → 3 calls) | `categorizeRun()` | 3 calls | 0 calls | ✗ |
-| 17 | **BLOCKED** — Cap 500 (600 results → 25 calls) | `categorizeRun()` | 25 calls | 0 calls | ✗ |
-| 18 | **BLOCKED** — Transient error releases row to pending | `categorizeRun()` | `status='pending'` | `status='running'` | ✗ |
-| 19 | **BLOCKED** — Terminal error marks row failed + partial event | `categorizeRun()` | `status='failed'` | `status='running'` | ✗ |
-| 20 | **BLOCKED** — Recovery: stale heartbeat reclaimed to pending | `recoverStalePipelineRows()` | `status='pending'` | `status='running'` | ✗ |
-| 21 | **BLOCKED** — `run.ai_categorized` published on completion | `categorizeRun()` | 1 event | 0 events | ✗ |
+| 1 | Consent gate skips when `AI_CLOUD_PIPELINE` unset | `categorizeRun()` direct call | No AI call, no event | 0 calls, 0 events | ✓ |
+| 2 | Consent gate skips when `aiCloudAckAt` is NULL | `categorizeRun()` direct call | No AI call, no event | 0 calls, 0 events | ✓ |
+| 3 | Consent gate passes when both gates satisfied | `categorizeRun()` direct call | 1 categorizeFailures call | 1 call observed | ✓ |
+| 4 | Reserve → execute → commit lifecycle (happy path) | `categorizeRun()` + DB query | Log row `status='done'`, `completed_at` set, `tokens_used=50` | All confirmed | ✓ |
+| 5 | `test_results` updated with `ai_category`, `ai_category_model`, `ai_category_at` | DB query after categorize | All 5 results have `app_defect`, `mock-model`, non-null timestamp | All confirmed | ✓ |
+| 6 | Publishes `run.ai_categorized` with correct payload | `eventBus.published` inspection | 1 event with `{ runId, orgId }` | 1 event, payload matches | ✓ |
+| 7 | Skips when run has zero failed results | `categorizeRun()` direct call | No AI call, no event | 0 calls, 0 events | ✓ |
+| 8 | Batches in groups of 20 — 50 results produce 3 calls | `aiProvider.calls` inspection | 3 calls: 20, 20, 10 | Exactly 3 calls, batch sizes correct | ✓ |
+| 9 | Caps at 500 failed results for 600-failure run | `aiProvider.calls` inspection | 25 calls, total 500 results | 25 calls, 500 total | ✓ |
+| 10 | Transient error (attempt < 3) releases row to pending | DB query after error | `status='pending'`, `error` set, no event | Confirmed | ✓ |
+| 11 | Terminal error (attempt ≥ 3) marks failed + partial event | DB query + eventBus | `status='failed'`, 1 event with `partial: true` | Confirmed | ✓ |
+| 12 | Boot-time recovery reclaims stale heartbeat rows | `recoverStalePipelineRows()` + DB | `status='pending'`, `worker_id=NULL` | Confirmed | ✓ |
+| 13 | Boot-time recovery terminal-fails exhausted rows | `recoverStalePipelineRows()` + DB | `status='failed'`, error contains 'Maximum retry' | Confirmed | ✓ |
+| 14 | Heartbeat cleared on completion (`heartbeat_at=NULL`, `worker_id=NULL`) | DB query after done | NULL values | Confirmed | ✓ |
+| 15 | `started_at` timestamp set on first reservation | DB query | Non-null `started_at` | Confirmed | ✓ |
+| 16 | Idempotency: skips LLM when results already categorized | Pre-seed + `categorizeRun()` | 0 AI calls, 1 event published | 0 calls, 1 event | ✓ |
+| 17 | EventBus subscription wired at boot when aiProvider injected | Publish `run.ingested`, verify handler runs | Handler runs (consent gate blocks silently) | No error, no crash | ✓ |
+| 18 | Full pipeline triggered via EventBus publish | Publish event, wait, check AI calls | 1 categorizeFailures call, 1 categorized event | Both confirmed | ✓ |
+| 19 | Recovery re-enqueues pending rows by publishing events | Seed pending row, run recovery | 1 `run.ingested` event with correct payload | Confirmed | ✓ |
+| 20 | No real AI SDK imports in test file | Static regex check | 0 matches for `openai`, `@anthropic-ai`, `groq-sdk` | 0 matches | ✓ |
 
-## Root causes of blocked checks (2 application code bugs)
+## Unit test coverage (consent gate — Layer 1)
 
-### Bug 1: `affectedRows` detection in `categorizer.ts:191-193` (blocks checks 14–19, 21)
-
-MikroORM's SQLite driver returns an **empty array `[]`** for `connection.execute()` on UPDATE statements (not an object with `affectedRows`). The current detection logic:
-
-```typescript
-const affectedRows = typeof reserved === 'object' && 'affectedRows' in reserved
-  ? (reserved as { affectedRows: number }).affectedRows
-  : Array.isArray(reserved) ? reserved.length : 0;
-```
-
-Always evaluates to `0` on SQLite because:
-- `typeof [] === 'object'` is true, but `'affectedRows' in []` is false
-- `Array.isArray([]) ? [].length : 0` → `0`
-
-**Remediation:** Use the SQLite-specific method for checking affected rows, or query `changes()` after the UPDATE:
-```typescript
-// Option A: Use raw knex/better-sqlite3 result
-const result = await em.getConnection().execute(updateSql, params);
-// Option B: After UPDATE, check SELECT changes()
-const [{ changes }] = await em.getConnection().execute('SELECT changes() as changes');
-```
-
-### Bug 2: Date comparison in `recovery.ts:78` (blocks check 20)
-
-The recovery SQL compares `heartbeat_at < ?` where `?` is a JavaScript `Date` object. SQLite stores datetimes from `CURRENT_TIMESTAMP` as UTC strings (e.g. `'2026-04-26 15:30:00'`), but MikroORM may serialize the JS `Date` parameter in a different format (ISO-8601 with `T` separator, or as a Unix timestamp). The format mismatch prevents SQLite's text-based date comparison from working correctly.
-
-**Remediation:** Pass the stale threshold as an ISO string formatted to match SQLite's `CURRENT_TIMESTAMP` output:
-```typescript
-const staleThreshold = new Date(Date.now() - HEARTBEAT_STALE_SECONDS * 1000)
-  .toISOString().replace('T', ' ').slice(0, 19);
-```
-
-### Additional note: Missing UNIQUE constraint (non-blocking — worked around in tests)
-
-The `ON CONFLICT (test_run_id, stage)` clause in the categorizer's upsert SQL requires a DDL-level UNIQUE constraint or index. The schema-generator doesn't create one (MikroORM v7 limitation). Tests create it manually via `CREATE UNIQUE INDEX`. This was flagged in the feature-handoff as a known issue.
+| # | What is being verified | Method | Expected | Actual | Status |
+|---|---|---|---|---|---|
+| U1 | Returns false when `AI_CLOUD_PIPELINE` unset | EM stub | `false` | `false` | ✓ |
+| U2 | Returns false when `AI_CLOUD_PIPELINE` is empty | EM stub | `false` | `false` | ✓ |
+| U3 | Returns false when `AI_CLOUD_PIPELINE` is "off" | EM stub | `false` | `false` | ✓ |
+| U4 | Returns false when `AI_CLOUD_PIPELINE` is "true" | EM stub | `false` | `false` | ✓ |
+| U5 | Returns true when `AI_CLOUD_PIPELINE` is "ON" (case-insensitive) | EM stub | `true` | `true` | ✓ |
+| U6 | Returns true when `AI_CLOUD_PIPELINE` is "on" | EM stub | `true` | `true` | ✓ |
+| U7 | Returns false when org not found | EM stub (null) | `false` | `false` | ✓ |
+| U8 | Returns false when `aiCloudAckAt` is null | EM stub | `false` | `false` | ✓ |
+| U9 | Returns true when `aiCloudAckAt` is a valid Date | EM stub | `true` | `true` | ✓ |
+| U10 | Both gates: env on + ack null → false | EM stub | `false` | `false` | ✓ |
+| U11 | Both gates: env unset + ack set → false | EM stub | `false` | `false` | ✓ |
+| U12 | Both gates: env on + ack set → true | EM stub | `true` | `true` | ✓ |
 
 ## Excerpt of raw output
 
 ```
- ✓ src/__tests__/unit/ai-pipeline-schemas.test.ts (23 tests) 7ms
- ✓ src/__tests__/integration/schema-sqlite.test.ts (18 tests) 100ms
-
- Test Files  17 passed (17)
-      Tests  372 passed (372)
-
-ai-categorization.test.ts:
- ✓ consent gate > skips when AI_CLOUD_PIPELINE is not set
- ✓ consent gate > skips when aiCloudAckAt is NULL
- × consent gate > runs when both gates pass → expected [] to have a length of 1 but got +0
- × happy path > completes reserve → execute → commit → expected [] to have a length of 1 but got +0
- × batching > batches in groups of 20 → expected [] to have a length of 3 but got +0
- × error handling > releases row to pending → expected 'running' to be 'pending'
- × boot-time recovery > reclaims stale heartbeat → expected 'running' to be 'pending'
- ✓ boot-time recovery > terminal-fails exhausted-attempt rows
- ✓ no real LLM calls > no AI SDK imports
+ Test Files  19 passed (19)
+      Tests  403 passed (403)
+   Start at  08:59:41
+   Duration  7.77s (transform 657ms, setup 0ms, collect 8.42s, tests 7.37s, environment 3ms, prepare 1.46s)
 ```
 
 ## Verdict
 
-**FAIL** — halt. Re-open a Feature-implementer session with the two bug fixes documented above.
-
-**Tests authored and ready:** 5 passing in `ai-categorization.test.ts` + 23 unit tests in `ai-pipeline-schemas.test.ts` + 2 new assertions in `schema-sqlite.test.ts` = 30 new passing tests. The 8 blocked integration tests are fully written and will pass once the two app code bugs are fixed — no test changes needed.
+**PASS** — all 20 integration checks + 12 unit checks green. No rendered routes in AI-002, so T2/T2.5/T3 are N/A. Proceed to test-handoff.
