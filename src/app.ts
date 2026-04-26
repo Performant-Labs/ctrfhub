@@ -234,7 +234,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
 
   if (options.db !== undefined) {
     // Explicit DB path provided (typically ':memory:' for integration tests).
-    // Reuse the production SQLite config (entities, migrations, skipTables)
+    // Reuse the production SQLite config (entities, schemaGenerator, skipTables)
     // and override only the dbName — required so `em.count(User)` in the
     // global preHandler resolves against a real entity registration.
     const { default: sqliteConfig } = await import('./mikro-orm.config.sqlite.js');
