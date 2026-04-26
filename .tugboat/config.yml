@@ -1,19 +1,19 @@
-# CTRFHub — Tugboat per-PR Preview Configuration
+# CTRFHub -- Tugboat per-PR Preview Configuration
 #
 # Defines two services: a PostgreSQL database and the CTRFHub Node.js app.
 # Every PR creates an isolated preview environment with a seeded admin
 # user, organization, project, and API key for dog-food CTRF ingestion.
 #
 # Build stages:
-#   init   — install OS packages and npm dependencies (cached across rebuilds)
-#   update — compile TypeScript + Tailwind CSS (re-runs on refresh)
-#   build  — start the app, run seed script, verify health
+#   init   -- install OS packages and npm dependencies (cached across rebuilds)
+#   update -- compile TypeScript + Tailwind CSS (re-runs on refresh)
+#   build  -- start the app, run seed script, verify health
 #
 # Environment variables (set in Tugboat's Repository Settings, NOT here):
-#   TUGBOAT_ADMIN_EMAIL    — admin user email for the preview
-#   TUGBOAT_ADMIN_PASSWORD — admin user password (min 8 chars)
-#   BETTER_AUTH_SECRET     — 32+ char session signing key
-#   SESSION_SECRET         — 32+ char session secret (can match BETTER_AUTH_SECRET)
+#   TUGBOAT_ADMIN_EMAIL    -- admin user email for the preview
+#   TUGBOAT_ADMIN_PASSWORD -- admin user password (min 8 chars)
+#   BETTER_AUTH_SECRET     -- 32+ char session signing key
+#   SESSION_SECRET         -- 32+ char session secret (can match BETTER_AUTH_SECRET)
 #
 # Anti-patterns (per .argos/CI-003/brief.md):
 #   - No hardcoded credentials in this file
@@ -26,7 +26,7 @@
 
 services:
   # ---------------------------------------------------------------------------
-  # db — PostgreSQL 16 (same version as compose.yml and CI)
+  # db -- PostgreSQL 16 (same version as compose.yml and CI)
   # ---------------------------------------------------------------------------
   db:
     image: postgres:16-alpine
@@ -36,7 +36,7 @@ services:
       POSTGRES_PASSWORD: ctrfhub
 
   # ---------------------------------------------------------------------------
-  # app — CTRFHub Node.js application
+  # app -- CTRFHub Node.js application
   # ---------------------------------------------------------------------------
   app:
     image: node:22-alpine
@@ -65,7 +65,7 @@ services:
         # Compile TypeScript → dist/ and build Tailwind CSS → dist/assets/
         - npm run build
         # Start the app in the background. Schema-generator (INFRA-005) syncs
-        # the DB at boot — no separate migration step needed.
+        # the DB at boot -- no separate migration step needed.
         - node dist/index.js &
         # Wait for the app to become healthy (schema sync + Better Auth migration).
         # Max 60 seconds with 2-second intervals.
