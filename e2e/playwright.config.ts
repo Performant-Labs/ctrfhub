@@ -17,7 +17,7 @@ export default defineConfig({
   reporter: [
     ['list'],
     ['playwright-ctrf-json-reporter', {
-      outputFile: 'ctrf/report.json',
+      outputFile: 'report.json',
       appName: 'CTRFHub E2E',
     }],
   ],
