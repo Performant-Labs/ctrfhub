@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
-# CTRFHub — Tugboat Preview Seed Script
+# CTRFHub -- Tugboat Preview Seed Script (SQLite variant)
 #
 # Creates the minimum data set for a functional per-PR preview:
 #   1. Admin user (via Better Auth signup API)
-#   2. Organization (direct PG insert — CTRFHub-owned table)
-#   3. Project (direct PG insert — CTRFHub-owned table)
+#   2. Organization (direct SQLite insert -- CTRFHub-owned table)
+#   3. Project (direct SQLite insert -- CTRFHub-owned table)
 #   4. API key (via Better Auth API key plugin)
 #
-# Idempotent: safe to re-run on Tugboat "Refresh" — uses HTTP status codes
-# and ON CONFLICT DO NOTHING to skip already-existing rows.
+# Idempotent: safe to re-run on Tugboat "Refresh" -- uses HTTP status codes
+# and INSERT OR IGNORE to skip already-existing rows.
 #
-# Environment variables (required — set in Tugboat Repository Settings):
-#   TUGBOAT_ADMIN_EMAIL    — admin account email
-#   TUGBOAT_ADMIN_PASSWORD — admin account password (min 8 chars)
-#   DATABASE_URL           — PostgreSQL connection string (set by config.yml)
+# Environment variables (required -- set in Tugboat Repository Settings):
+#   TUGBOAT_ADMIN_EMAIL    -- admin account email
+#   TUGBOAT_ADMIN_PASSWORD -- admin account password (min 8 chars)
+#   SQLITE_PATH            -- SQLite file path (set by config.yml)
 #
-# This script is intentionally short-lived — AUTH-002's env-var admin seed
+# Free-tier note: Tugboat free tier doesn't fit a PG container alongside
+# the Node app in 512 MB RAM, so the preview uses SQLite. Production
+# deployments still target PG via DATABASE_URL; the app's MikroORM
+# dual-dialect config picks the driver at boot. See
+# skills/mikroorm-dual-dialect.md.
+#
+# This script is intentionally short-lived -- AUTH-002's env-var admin seed
 # (CTRFHUB_INITIAL_ADMIN_*) will replace it once that story ships.
 #
 # See: skills/better-auth-session-and-api-tokens.md
@@ -26,6 +32,7 @@ set -euo pipefail
 BASE_URL="http://localhost:3000"
 ADMIN_EMAIL="${TUGBOAT_ADMIN_EMAIL:?TUGBOAT_ADMIN_EMAIL must be set in Tugboat Repository Settings}"
 ADMIN_PASSWORD="${TUGBOAT_ADMIN_PASSWORD:?TUGBOAT_ADMIN_PASSWORD must be set in Tugboat Repository Settings}"
+SQLITE_DB="${SQLITE_PATH:?SQLITE_PATH must be set (config.yml sets this)}"
 COOKIE_JAR="/tmp/ctrfhub-seed-cookies"
 ORG_ID="preview-org"
 ORG_NAME="Preview Org"
@@ -34,13 +41,13 @@ PROJECT_NAME="Sample Project"
 PROJECT_SLUG="sample"
 PROJECT_PREFIX="E2E"
 
-echo "═══════════════════════════════════════════════"
-echo "  CTRFHub Preview Seed"
-echo "═══════════════════════════════════════════════"
+echo "==============================================="
+echo "  CTRFHub Preview Seed (SQLite)"
+echo "==============================================="
 
-# ─── Step 1: Create admin user via Better Auth signup ─────────────────────
+# --- Step 1: Create admin user via Better Auth signup ---------------------
 echo ""
-echo "▶ Step 1: Creating admin user (${ADMIN_EMAIL})..."
+echo ">> Step 1: Creating admin user (${ADMIN_EMAIL})..."
 
 SIGNUP_STATUS=$(curl -s -o /tmp/ctrfhub-signup-response.json -w "%{http_code}" \
   -X POST "${BASE_URL}/api/auth/sign-up/email" \
@@ -49,9 +56,9 @@ SIGNUP_STATUS=$(curl -s -o /tmp/ctrfhub-signup-response.json -w "%{http_code}" \
   -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\",\"name\":\"Preview Admin\"}")
 
 if [ "$SIGNUP_STATUS" = "200" ] || [ "$SIGNUP_STATUS" = "201" ]; then
-  echo "  ✅ Admin user created"
+  echo "  [OK] Admin user created"
 else
-  echo "  ℹ️  Signup returned ${SIGNUP_STATUS} — user may already exist, trying login..."
+  echo "  [INFO] Signup returned ${SIGNUP_STATUS} -- user may already exist, trying login..."
   LOGIN_STATUS=$(curl -s -o /tmp/ctrfhub-login-response.json -w "%{http_code}" \
     -X POST "${BASE_URL}/api/auth/sign-in/email" \
     -H "content-type: application/json" \
@@ -59,78 +66,77 @@ else
     -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"}")
 
   if [ "$LOGIN_STATUS" = "200" ] || [ "$LOGIN_STATUS" = "201" ]; then
-    echo "  ✅ Logged in as existing admin"
+    echo "  [OK] Logged in as existing admin"
   else
-    echo "  ❌ Login failed (HTTP ${LOGIN_STATUS}):"
+    echo "  [FAIL] Login failed (HTTP ${LOGIN_STATUS}):"
     cat /tmp/ctrfhub-login-response.json 2>/dev/null || true
     exit 1
   fi
 fi
 
-# ─── Step 2: Create Organization (direct PG — CTRFHub-owned table) ────────
+# --- Step 2: Create Organization (direct SQLite -- CTRFHub-owned table) ---
 echo ""
-echo "▶ Step 2: Creating organization (${ORG_SLUG})..."
+echo ">> Step 2: Creating organization (${ORG_SLUG})..."
 
 node -e "
-const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-(async () => {
-  await pool.query(
-    \`INSERT INTO organization (id, name, slug, \"createdAt\")
-     VALUES (\\\$1, \\\$2, \\\$3, NOW())
-     ON CONFLICT (id) DO NOTHING\`,
-    ['${ORG_ID}', '${ORG_NAME}', '${ORG_SLUG}']
-  );
-  console.log('  ✅ Organization ready');
-  await pool.end();
-})().catch(err => { console.error('  ❌ Organization create failed:', err.message); process.exit(1); });
+const Database = require('better-sqlite3');
+let db;
+try {
+  db = new Database(process.env.SQLITE_PATH);
+  db.prepare(
+    'INSERT OR IGNORE INTO organization (id, name, slug, \"createdAt\") VALUES (?, ?, ?, datetime(\"now\"))'
+  ).run('${ORG_ID}', '${ORG_NAME}', '${ORG_SLUG}');
+  console.log('  [OK] Organization ready');
+} catch (err) {
+  console.error('  [FAIL] Organization create failed:', err.message);
+  process.exitCode = 1;
+} finally {
+  if (db) db.close();
+}
 "
 
-# ─── Step 3: Create Project (direct PG — CTRFHub-owned table) ─────────────
+# --- Step 3: Create Project (direct SQLite -- CTRFHub-owned table) --------
 echo ""
-echo "▶ Step 3: Creating project (${PROJECT_SLUG})..."
+echo ">> Step 3: Creating project (${PROJECT_SLUG})..."
 
-# Projects use auto-increment integer PK. Use a subquery to check if one
-# with this slug already exists before inserting.
 PROJECT_ID=$(node -e "
-const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-(async () => {
+const Database = require('better-sqlite3');
+let db;
+let projectId;
+try {
+  db = new Database(process.env.SQLITE_PATH);
   // Check if project already exists
-  const existing = await pool.query(
-    'SELECT id FROM projects WHERE slug = \\\$1',
-    ['${PROJECT_SLUG}']
-  );
-  if (existing.rows.length > 0) {
-    console.log(existing.rows[0].id);
-    await pool.end();
-    return;
+  const existing = db.prepare('SELECT id FROM projects WHERE slug = ?').get('${PROJECT_SLUG}');
+  if (existing) {
+    projectId = existing.id;
+  } else {
+    // Insert new project
+    const now = new Date().toISOString();
+    const result = db.prepare(
+      'INSERT INTO projects (name, slug, \"idPrefix\", settings, \"createdAt\", \"updatedAt\", organization_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run('${PROJECT_NAME}', '${PROJECT_SLUG}', '${PROJECT_PREFIX}', '{}', now, now, '${ORG_ID}');
+    projectId = result.lastInsertRowid;
   }
-  // Insert new project
-  const result = await pool.query(
-    \`INSERT INTO projects (name, slug, \"idPrefix\", settings, \"createdAt\", \"updatedAt\", organization_id)
-     VALUES (\\\$1, \\\$2, \\\$3, '{}', NOW(), NOW(), \\\$4)
-     RETURNING id\`,
-    ['${PROJECT_NAME}', '${PROJECT_SLUG}', '${PROJECT_PREFIX}', '${ORG_ID}']
-  );
-  console.log(result.rows[0].id);
-  await pool.end();
-})().catch(err => { console.error('ERROR:' + err.message); process.exit(1); });
+  console.log(projectId);
+} catch (err) {
+  console.error('ERROR:' + err.message);
+  process.exitCode = 1;
+} finally {
+  if (db) db.close();
+}
 ")
 
 if echo "$PROJECT_ID" | grep -q "^[0-9]"; then
-  echo "  ✅ Project ready (id=${PROJECT_ID})"
+  echo "  [OK] Project ready (id=${PROJECT_ID})"
 else
-  echo "  ❌ Failed to get project ID: ${PROJECT_ID}"
+  echo "  [FAIL] Failed to get project ID: ${PROJECT_ID}"
   exit 1
 fi
 
-# ─── Step 4: Create API key via Better Auth ───────────────────────────────
+# --- Step 4: Create API key via Better Auth -------------------------------
 echo ""
-echo "▶ Step 4: Creating API key for project ${PROJECT_SLUG} (id=${PROJECT_ID})..."
+echo ">> Step 4: Creating API key for project ${PROJECT_SLUG} (id=${PROJECT_ID})..."
 
-# Check if an API key named "preview-ci" already exists by listing keys.
-# If the list endpoint isn't available or returns empty, create a new key.
 APIKEY_RESPONSE=$(curl -s -o /tmp/ctrfhub-apikey-response.json -w "%{http_code}" \
   -X POST "${BASE_URL}/api/auth/api-key/create" \
   -H "content-type: application/json" \
@@ -138,41 +144,37 @@ APIKEY_RESPONSE=$(curl -s -o /tmp/ctrfhub-apikey-response.json -w "%{http_code}"
   -d "{\"name\":\"preview-ci\",\"metadata\":{\"projectId\":\"${PROJECT_ID}\"}}")
 
 if [ "$APIKEY_RESPONSE" = "200" ] || [ "$APIKEY_RESPONSE" = "201" ]; then
-  # Extract the plaintext key from the response.
-  # Better Auth returns { key: "ctrf_xxx...", ... } on creation.
   API_KEY=$(node -e "
     const data = require('/tmp/ctrfhub-apikey-response.json');
-    // The key field contains the plaintext value — shown exactly once.
     console.log(data.key || data.apiKey || '');
   " 2>/dev/null || true)
 
   if [ -n "$API_KEY" ]; then
-    echo "  ✅ API key created: ${API_KEY:0:12}..."
-    # Write the key to a well-known location for CI consumption.
-    # SECURITY: This file is inside the Tugboat preview container only —
+    echo "  [OK] API key created: ${API_KEY:0:12}..."
+    # SECURITY: This file is inside the Tugboat preview container only --
     # never committed, never logged in full.
     echo "${API_KEY}" > /tmp/ctrfhub-preview-api-key
     echo ""
-    echo "═══════════════════════════════════════════════"
+    echo "==============================================="
     echo "  Preview API Key: ${API_KEY:0:12}..."
     echo "  Preview URL:     ${TUGBOAT_DEFAULT_SERVICE_URL:-http://localhost:3000}"
-    echo "═══════════════════════════════════════════════"
+    echo "==============================================="
   else
-    echo "  ⚠️  API key created but could not extract plaintext value"
+    echo "  [WARN] API key created but could not extract plaintext value"
     echo "  Response:"
     cat /tmp/ctrfhub-apikey-response.json 2>/dev/null || true
   fi
 else
-  echo "  ⚠️  API key creation returned HTTP ${APIKEY_RESPONSE} (may already exist)"
+  echo "  [WARN] API key creation returned HTTP ${APIKEY_RESPONSE} (may already exist)"
   echo "  Response:"
   cat /tmp/ctrfhub-apikey-response.json 2>/dev/null || true
   echo ""
-  echo "  ℹ️  If a key already exists from a previous build, the preview"
-  echo "     is still functional — existing keys remain valid."
+  echo "  [INFO] If a key already exists from a previous build, the preview"
+  echo "        is still functional -- existing keys remain valid."
 fi
 
-# ─── Cleanup ──────────────────────────────────────────────────────────────
+# --- Cleanup --------------------------------------------------------------
 rm -f "${COOKIE_JAR}" /tmp/ctrfhub-signup-response.json /tmp/ctrfhub-login-response.json
 
 echo ""
-echo "✅ Seed complete"
+echo "[OK] Seed complete"

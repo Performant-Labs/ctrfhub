@@ -1,8 +1,14 @@
-# CTRFHub -- Tugboat per-PR Preview Configuration
+# CTRFHub -- Tugboat per-PR Preview Configuration (SQLite variant)
 #
-# Defines two services: a PostgreSQL database and the CTRFHub Node.js app.
-# Every PR creates an isolated preview environment with a seeded admin
-# user, organization, project, and API key for dog-food CTRF ingestion.
+# This preview uses SQLite (not Postgres) because Tugboat's free tier
+# (512 MB RAM total) cannot fit a PG container alongside the Node app
+# within the 5-minute startup healthcheck window. Production is
+# unaffected -- the app supports both dialects via MikroORM's
+# dual-dialect config (skills/mikroorm-dual-dialect.md), and prod
+# deployments still target PG via DATABASE_URL.
+#
+# Service:
+#   app -- Node.js application with on-disk SQLite at /tmp/ctrfhub-preview.sqlite
 #
 # Build stages:
 #   init   -- install OS packages and npm dependencies (cached across rebuilds)
@@ -23,27 +29,19 @@
 # See: docs/planning/architecture.md --Production Deployment
 # See: skills/better-auth-session-and-api-tokens.md
 # See: skills/ctrf-ingest-validation.md
+# See: skills/mikroorm-dual-dialect.md
 
 services:
   # ---------------------------------------------------------------------------
-  # db -- PostgreSQL 16 (same version as compose.yml and CI)
-  # ---------------------------------------------------------------------------
-  db:
-    image: tugboatqa/postgres:14
-    environment:
-      POSTGRES_DB: ctrfhub
-      POSTGRES_USER: ctrfhub
-      POSTGRES_PASSWORD: ctrfhub
-
-  # ---------------------------------------------------------------------------
-  # app -- CTRFHub Node.js application
+  # app -- CTRFHub Node.js application (SQLite-backed for free-tier compatibility)
   # ---------------------------------------------------------------------------
   app:
     image: node:22-alpine
     default: true
-    depends: db
     environment:
-      DATABASE_URL: postgresql://ctrfhub:ctrfhub@db:5432/ctrfhub
+      # SQLITE_PATH triggers MikroORM's SQLite dialect (mikro-orm.config.ts
+      # selects PG when DATABASE_URL is set, SQLite otherwise).
+      SQLITE_PATH: /tmp/ctrfhub-preview.sqlite
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: ${TUGBOAT_DEFAULT_SERVICE_URL}
       SESSION_SECRET: ${SESSION_SECRET}
@@ -65,7 +63,7 @@ services:
         # Compile TypeScript --- dist/ and build Tailwind CSS --- dist/assets/
         - npm run build
         # Start the app in the background. Schema-generator (INFRA-005) syncs
-        # the DB at boot -- no separate migration step needed.
+        # the SQLite DB at boot -- no separate migration step needed.
         - node dist/index.js &
         # Wait for the app to become healthy (schema sync + Better Auth migration).
         # Max 60 seconds with 2-second intervals.
