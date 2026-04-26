@@ -19,6 +19,7 @@ import { TestRun } from '../../entities/TestRun.js';
 import { TestResult } from '../../entities/TestResult.js';
 import { TestArtifact } from '../../entities/TestArtifact.js';
 import { IngestIdempotencyKey } from '../../entities/IngestIdempotencyKey.js';
+import { AiPipelineLog } from '../../entities/AiPipelineLog.js';
 
 describe('SQLite schema-generator', () => {
   let orm: MikroORM;
@@ -28,7 +29,7 @@ describe('SQLite schema-generator', () => {
     // to avoid issues with defineConfig return value spreading.
     // No migrations config — schema-generator creates tables from entities.
     orm = await MikroORM.init(defineConfig({
-      entities: [Organization, User, Project, TestRun, TestResult, TestArtifact, IngestIdempotencyKey],
+      entities: [Organization, User, Project, TestRun, TestResult, TestArtifact, IngestIdempotencyKey, AiPipelineLog],
       dbName: ':memory:',
       debug: false,
       schemaGenerator: {
@@ -115,6 +116,8 @@ describe('SQLite schema-generator', () => {
     expect(columns).toContain('stack_trace');
     expect(columns).toContain('ai_category');
     expect(columns).toContain('ai_category_override');
+    expect(columns).toContain('ai_category_model');
+    expect(columns).toContain('ai_category_at');
     expect(columns).toContain('flaky_score');
     expect(columns).toContain('error_hash');
     expect(columns).toContain('created_at');
@@ -165,7 +168,7 @@ describe('SQLite schema-generator', () => {
     expect(tableNames).not.toContain('apikey');
   });
 
-  it('creates exactly 6 CTRFHub-owned tables', async () => {
+  it('creates exactly 7 CTRFHub-owned tables', async () => {
     const connection = orm.em.getConnection();
     // Exclude internal SQLite tables (sqlite_sequence is created by autoincrement).
     // No mikro_orm_migrations table exists — schema-generator doesn't create one.
@@ -174,15 +177,16 @@ describe('SQLite schema-generator', () => {
     );
     const tableNames = (tables as Array<{ name: string }>).map((t) => t.name);
 
-    // 6 CTRFHub-owned tables (Organization is now included — INFRA-005 pivot).
-    // The 7th entity (User) is Better Auth-managed and in skipTables.
+    // 7 CTRFHub-owned tables (Organization included — INFRA-005 pivot).
+    // User is Better Auth-managed and in skipTables.
     expect(tableNames).toContain('organization');
     expect(tableNames).toContain('projects');
     expect(tableNames).toContain('test_runs');
     expect(tableNames).toContain('test_results');
     expect(tableNames).toContain('test_artifacts');
     expect(tableNames).toContain('ingest_idempotency_keys');
-    expect(tableNames).toHaveLength(6);
+    expect(tableNames).toContain('ai_pipeline_log');
+    expect(tableNames).toHaveLength(7);
   });
 
   it('update() is idempotent — running twice causes no errors', async () => {
@@ -248,5 +252,33 @@ describe('SQLite schema-generator', () => {
     );
     expect(fk).toBeDefined();
     expect(fk!.table).toBe('test_results');
+  });
+
+  it('creates the ai_pipeline_log table with expected columns', async () => {
+    const connection = orm.em.getConnection();
+    const result = await connection.execute("PRAGMA table_info('ai_pipeline_log')");
+    const columns = (result as Array<{ name: string }>).map((r) => r.name);
+
+    expect(columns).toContain('id');
+    expect(columns).toContain('test_run_id');
+    expect(columns).toContain('stage');
+    expect(columns).toContain('status');
+    expect(columns).toContain('worker_id');
+    expect(columns).toContain('heartbeat_at');
+    expect(columns).toContain('attempt');
+    expect(columns).toContain('error');
+    expect(columns).toContain('tokens_used');
+    expect(columns).toContain('started_at');
+    expect(columns).toContain('completed_at');
+  });
+
+  it('ai_pipeline_log.test_run_id has a FK to test_runs', async () => {
+    const connection = orm.em.getConnection();
+    const fks = await connection.execute("PRAGMA foreign_key_list('ai_pipeline_log')");
+    const fk = (fks as Array<{ table: string; from: string }>).find(
+      (fk) => fk.from === 'test_run_id'
+    );
+    expect(fk).toBeDefined();
+    expect(fk!.table).toBe('test_runs');
   });
 });

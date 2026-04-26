@@ -33,6 +33,12 @@ const OrganizationSchema = defineEntity({
     logo:      p.string().length(500).nullable(),
     metadata:  p.json().nullable(),
     createdAt: p.datetime(),
+    /**
+     * When the org admin acknowledged AI cloud pipeline data sharing.
+     * NULL = not acknowledged → AI pipeline skips this org silently.
+     * @see docs/planning/ai-features.md §Privacy and consent
+     */
+    aiCloudAckAt: p.datetime().nullable(),
   },
 });
 

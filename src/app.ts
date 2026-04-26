@@ -50,8 +50,10 @@ import { buildAuth } from './auth.js';
 import { User } from './entities/index.js';
 import { registerAuthRoutes } from './modules/auth/routes.js';
 import ingestPlugin from './modules/ingest/routes.js';
-import { MemoryEventBus } from './services/event-bus.js';
+import { MemoryEventBus, RunEvents } from './services/event-bus.js';
+import type { RunIngestedPayload } from './services/event-bus.js';
 import { createAiProvider } from './services/ai/index.js';
+import { categorizeRun, recoverStalePipelineRows } from './services/ai/pipeline/index.js';
 
 // ---------------------------------------------------------------------------
 // Module-private: resolve __dirname for ESM (needed by @fastify/static root)
@@ -338,6 +340,42 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     app.addHook('onClose', async () => {
       await aiProvider.close();
     });
+
+    // ── AI pipeline boot-time recovery + subscription ───────────────
+    // Only wire the pipeline if the eventBus supports the full interface
+    // (subscribe + publish). Minimal test doubles that only implement
+    // close() are left alone — the pipeline simply doesn't activate.
+    if (typeof eventBus.subscribe === 'function' && typeof eventBus.publish === 'function') {
+      // Reclaim crashed-worker rows and re-enqueue pending stages before
+      // subscribing to events. This ensures work from a previous crash
+      // is picked up before new events are processed.
+      // @see skills/ai-pipeline-event-bus.md §Boot-time recovery
+      try {
+        await recoverStalePipelineRows(orm, eventBus);
+      } catch (err) {
+        app.log.error({ err }, 'AI pipeline boot-time recovery failed — pipeline may miss stale rows');
+        // Non-fatal: the pipeline can still process new events even if
+        // recovery fails. The stuck-stage sweeper will catch them later.
+      }
+
+      // Subscribe to run.ingested in the 'ai' consumer group. Each event
+      // triggers the A1 categorization stage which uses its own forked EM
+      // (not request.em — this is an EventBus subscriber, not an HTTP handler).
+      // @see skills/ai-pipeline-event-bus.md §Event chain
+      eventBus.subscribe('ai', RunEvents.RUN_INGESTED, async (rawPayload) => {
+        const payload = rawPayload as RunIngestedPayload;
+        try {
+          await categorizeRun(payload, aiProvider, orm, eventBus);
+        } catch (err) {
+          app.log.error(
+            { err, runId: payload.runId },
+            'A1 categorization failed — unhandled error in categorizeRun',
+          );
+          // Swallowed: EventBus handlers must not propagate errors.
+          // The reserve-execute-commit pattern handles retries internally.
+        }
+      });
+    }
   }
 
   // -----------------------------------------------------------------------

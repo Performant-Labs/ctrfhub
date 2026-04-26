@@ -202,7 +202,7 @@ Status key:
 **Page verification tiers:** none (pipeline only)
 **Critical test paths:** `ai_pipeline_log` table created on both dialects via schema-generator (per INFRA-005); A1 subscribes to `run.ingested`; reserve → execute → commit pattern observable in log rows; heartbeat every 15 s; boot-time recovery query finds `stage='running'` rows and resumes/terminal-fails them; consent gate denies when `AI_CLOUD_PIPELINE` unset or `organizations.ai_cloud_ack_at` null; batch size 20, cap 500 failed results; publishes `run.ai_categorized` on completion; **no real LLM calls** — tests use `MockAiProvider` exclusively
 **Acceptance:** `ai_pipeline_log` table created on both dialects via schema-generator (per INFRA-005); A1 stage subscribes to `run.ingested`; reserve-execute-commit pattern implemented; heartbeat every 15 s; boot-time recovery query; privacy/consent gate (`AI_CLOUD_PIPELINE`, `organizations.ai_cloud_ack_at`); batch size 20, cap 500 failed results; `ai_category`, `ai_category_override`, `ai_category_model`, `ai_category_at` columns on `test_results`; publishes `run.ai_categorized` on completion; integration tests use `MockAiProvider`; no real API calls in tests.
-- [ ] AI-002
+- [x] AI-002
 
 ---
 
