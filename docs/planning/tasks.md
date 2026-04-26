@@ -110,7 +110,7 @@ Status key:
 **Page verification tiers:** T1 Headless (every status code: 201, 401, 404, 413, 422, 429; idempotency replay header)
 **Critical test paths:** JSON and multipart/form-data both accepted; 201 with `{ runId }` on success; 401 missing token; 422 invalid CTRF; 404 unknown project; 413 size limit; 429 rate limit; 403 on cross-project token; idempotency replay returns 200 with `X-Idempotent-Replay: true`; bulk insert uses 500-row chunks with `setImmediate` yield (event loop not blocked); `run.ingested` event published to `MemoryEventBus`; **no `/api/artifact` endpoint exists**
 **Acceptance:** `POST /api/v1/projects/:slug/runs` with `x-api-token`; JSON and multipart/form-data accepted; Zod validation; 201 with `{ runId }`; 401 missing token; 422 invalid CTRF; 404 unknown project; 429 rate limit; 413 size limit; token scoped to project (403 cross-project); idempotency key handling (200 + `X-Idempotent-Replay: true` on duplicate); bulk insert uses 500-row chunked pattern with `setImmediate` yield; `run.ingested` published to EventBus; NO separate `/api/artifact` endpoint; integration test suite covers all cases.
-- [ ] CTRF-002
+- [x] CTRF-002
 
 ---
 

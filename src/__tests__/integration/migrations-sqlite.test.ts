@@ -18,6 +18,7 @@ import { Project } from '../../entities/Project.js';
 import { TestRun } from '../../entities/TestRun.js';
 import { TestResult } from '../../entities/TestResult.js';
 import { TestArtifact } from '../../entities/TestArtifact.js';
+import { IngestIdempotencyKey } from '../../entities/IngestIdempotencyKey.js';
 
 describe('SQLite migrations', () => {
   let orm: MikroORM;
@@ -26,7 +27,7 @@ describe('SQLite migrations', () => {
     // Build a self-contained config instead of importing the app config
     // to avoid issues with defineConfig return value spreading.
     orm = await MikroORM.init(defineConfig({
-      entities: [Organization, User, Project, TestRun, TestResult, TestArtifact],
+      entities: [Organization, User, Project, TestRun, TestResult, TestArtifact, IngestIdempotencyKey],
       dbName: ':memory:',
       debug: false,
       extensions: [Migrator],
@@ -139,7 +140,7 @@ describe('SQLite migrations', () => {
     expect(tableNames).not.toContain('verification');
   });
 
-  it('creates exactly 4 CTRFHub-owned tables', async () => {
+  it('creates exactly 5 CTRFHub-owned tables', async () => {
     const connection = orm.em.getConnection();
     // Exclude internal SQLite tables (sqlite_sequence is created by autoincrement)
     // and MikroORM's own tracking tables.
@@ -152,7 +153,40 @@ describe('SQLite migrations', () => {
     expect(tableNames).toContain('test_runs');
     expect(tableNames).toContain('test_results');
     expect(tableNames).toContain('test_artifacts');
-    expect(tableNames).toHaveLength(4);
+    expect(tableNames).toContain('ingest_idempotency_keys');
+    expect(tableNames).toHaveLength(5);
+  });
+
+  it('creates the ingest_idempotency_keys table with expected columns', async () => {
+    const connection = orm.em.getConnection();
+    const result = await connection.execute("PRAGMA table_info('ingest_idempotency_keys')");
+    const columns = (result as Array<{ name: string }>).map((r) => r.name);
+
+    expect(columns).toContain('id');
+    expect(columns).toContain('project_id');
+    expect(columns).toContain('idempotency_key');
+    expect(columns).toContain('test_run_id');
+    expect(columns).toContain('created_at');
+  });
+
+  it('ingest_idempotency_keys.project_id has a FK to projects', async () => {
+    const connection = orm.em.getConnection();
+    const fks = await connection.execute("PRAGMA foreign_key_list('ingest_idempotency_keys')");
+    const fk = (fks as Array<{ table: string; from: string }>).find(
+      (fk) => fk.from === 'project_id'
+    );
+    expect(fk).toBeDefined();
+    expect(fk!.table).toBe('projects');
+  });
+
+  it('ingest_idempotency_keys.test_run_id has a FK to test_runs', async () => {
+    const connection = orm.em.getConnection();
+    const fks = await connection.execute("PRAGMA foreign_key_list('ingest_idempotency_keys')");
+    const fk = (fks as Array<{ table: string; from: string }>).find(
+      (fk) => fk.from === 'test_run_id'
+    );
+    expect(fk).toBeDefined();
+    expect(fk!.table).toBe('test_runs');
   });
 
   it('projects.organization_id has a FK to organization', async () => {

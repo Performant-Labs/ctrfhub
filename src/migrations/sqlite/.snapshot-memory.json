@@ -2,6 +2,165 @@
   "namespaces": [],
   "tables": [
     {
+      "name": "ingest_idempotency_keys",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "INTEGER",
+          "unsigned": false,
+          "autoincrement": true,
+          "primary": true,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "INTEGER",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": true,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "TEXT",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
+        "test_run_id": {
+          "name": "test_run_id",
+          "type": "INTEGER",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "datetime",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "CURRENT_TIMESTAMP",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        }
+      },
+      "indexes": [
+        {
+          "columnNames": [
+            "id"
+          ],
+          "keyName": "primary",
+          "constraint": true,
+          "unique": true,
+          "primary": true
+        },
+        {
+          "columnNames": [
+            "project_id",
+            "idempotency_key"
+          ],
+          "keyName": "ingest_idempotency_keys_project_id_idempotency_key_unique",
+          "unique": true,
+          "constraint": true,
+          "primary": false,
+          "composite": true
+        },
+        {
+          "columnNames": [
+            "test_run_id"
+          ],
+          "keyName": "ingest_idempotency_keys_test_run_id_index",
+          "unique": false,
+          "constraint": false,
+          "primary": false
+        },
+        {
+          "columnNames": [
+            "project_id"
+          ],
+          "keyName": "ingest_idempotency_keys_project_id_index",
+          "unique": false,
+          "constraint": false,
+          "primary": false
+        }
+      ],
+      "checks": [],
+      "foreignKeys": {
+        "ingest_idempotency_keys_test_run_id_foreign": {
+          "constraintName": "ingest_idempotency_keys_test_run_id_foreign",
+          "columnName": "test_run_id",
+          "columnNames": [
+            "test_run_id"
+          ],
+          "localTableName": "ingest_idempotency_keys",
+          "referencedTableName": "test_runs",
+          "referencedColumnName": "id",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "updateRule": "no action",
+          "deleteRule": "no action"
+        },
+        "ingest_idempotency_keys_project_id_foreign": {
+          "constraintName": "ingest_idempotency_keys_project_id_foreign",
+          "columnName": "project_id",
+          "columnNames": [
+            "project_id"
+          ],
+          "localTableName": "ingest_idempotency_keys",
+          "referencedTableName": "projects",
+          "referencedColumnName": "id",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "updateRule": "no action",
+          "deleteRule": "no action"
+        }
+      },
+      "nativeEnums": {}
+    },
+    {
       "name": "projects",
       "columns": {
         "id": {
