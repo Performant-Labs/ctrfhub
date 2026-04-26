@@ -20,7 +20,7 @@
 #   - No separate "run migrations" step (schema-generator runs at app boot)
 #   - No teardown script (Tugboat manages preview lifecycle)
 #
-# See: docs/planning/architecture.md §Production Deployment
+# See: docs/planning/architecture.md --Production Deployment
 # See: skills/better-auth-session-and-api-tokens.md
 # See: skills/ctrf-ingest-validation.md
 
@@ -53,16 +53,16 @@ services:
       LOG_LEVEL: info
 
     commands:
-      # ── init: system packages + npm install (cached, skipped on refresh) ──
+      # ------ init: system packages + npm install (cached, skipped on refresh) ------
       init:
         # Native build toolchain for better-sqlite3 compilation + wget for healthchecks
         - apk add --no-cache python3 make g++ wget
         # Install all dependencies (including devDeps needed for tsc + tailwind build)
         - npm ci
 
-      # ── update: compile + start app (re-runs on PR code changes / refresh) ──
+      # ------ update: compile + start app (re-runs on PR code changes / refresh) ------
       update:
-        # Compile TypeScript → dist/ and build Tailwind CSS → dist/assets/
+        # Compile TypeScript --- dist/ and build Tailwind CSS --- dist/assets/
         - npm run build
         # Start the app in the background. Schema-generator (INFRA-005) syncs
         # the DB at boot -- no separate migration step needed.
@@ -73,19 +73,19 @@ services:
           for i in $(seq 1 30); do
             STATUS=$(wget -qO- http://localhost:3000/health 2>/dev/null | grep -o '"status":"ok"' || true)
             if [ -n "$STATUS" ]; then
-              echo "✅ App is healthy"
+              echo "--- App is healthy"
               break
             fi
-            echo "⏳ Waiting for app... attempt $i/30"
+            echo "--- Waiting for app... attempt $i/30"
             sleep 2
           done
           if [ -z "$STATUS" ]; then
-            echo "❌ App did not become healthy within 60s"
+            echo "--- App did not become healthy within 60s"
             wget -qO- http://localhost:3000/health 2>/dev/null || true
             exit 1
           fi
 
-      # ── build: seed data + final verification (runs on every build) ──
+      # ------ build: seed data + final verification (runs on every build) ------
       build:
         # Run the idempotent seed script to create admin, org, project, and API key.
         - bash "${TUGBOAT_ROOT}/.tugboat/seed.sh"
