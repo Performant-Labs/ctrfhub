@@ -53,6 +53,16 @@
 | **Run timeout / inactivity** | Not planned | ✅ | SC has per-project `inactivityTimeoutSeconds` with a dedicated `runTimeout` collection. If a run is inactive beyond the threshold, it's marked completed with timeout. |
 | **Deployment complexity** | Single container (Node.js + SQLite) | 4 containers (MongoDB, Director, API, Dashboard) | CTRFHub's single-binary story is dramatically simpler. SC requires MongoDB as a hard dependency, plus 3 Node.js services. |
 | **Technology stack** | Node.js, Fastify, HTMX, MikroORM | Node.js, Express, React (MUI), Apollo Server, MongoDB driver | Both are Node.js. SC uses a SPA architecture (React + Apollo Client → Apollo Server → MongoDB) vs CTRFHub's server-rendered HTMX approach. |
+| **Status taxonomy depth** | `passed / failed / skipped / pending / other` (5 states) | `passed / failed / skipped / pending` (4 states) | SC mirrors Cypress's native 4-state model. No distinction between product defect and test infrastructure failure — a single `failed` covers both. |
+| **Execution step hierarchy** | Flat (`message` + `trace` on result) | Flat — attempt → error only | SC records individual test attempts (`attempts[]`) with per-attempt `displayError` and code frame. No before/after stages, no nested steps, no per-step attachments. The deepest grouping is spec → test → attempt. |
+| **Export to monitoring systems** | Not yet | **Absent** | No Prometheus, InfluxDB, or other metrics export. The `isDBHealthy()` driver method is internal only; no scrape endpoint. |
+| **Issue tracker integration** | Not planned (MVP) | **Absent** | No Jira, GitHub Issues, or other BTS linking. Hooks can post to generic webhooks, but there is no structured ticket-linking workflow. |
+| **Rule-based vs AI categorization** | LLM-based (A1 pipeline) | **Absent** | SC has no categorization at all — failures are displayed raw. No regex rules, no ML, no LLM. |
+| **Complementary vs competitive** | Competitive (overlapping dashboard role) | Partially complementary | SC focuses on Cypress orchestration; CTRFHub focuses on multi-framework post-hoc analysis. A team running Cypress could use SC for parallelization *and* CTRFHub for cross-framework dashboarding — they are not mutually exclusive. The overlap is only if the team is Cypress-only and only needs a run dashboard. |
+| **AI cold-start story** | Works day 0 (LLM) | N/A — no AI | SC has no AI. No cold-start concern. |
+| **Privacy architecture** | Per-project consent gate (opt-in) | N/A — no AI | No log indexing, no ML pipeline, no data sent to external services. Privacy concerns are limited to the ingest API and MongoDB storage — both are self-hosted. |
+| **Plugin / extensibility model** | In-process event bus | Driver interface only | SC's extensibility is limited to swapping `ExecutionDriver` (in-memory vs mongo) and `ScreenshotsDriver` (6 cloud backends). No plugin system, no event hooks for third parties beyond the notification hook system. |
+| **Live run interruption / Quality Gates** | Not yet (post-hoc model) | **Partial** — `inactivityTimeoutSeconds` per project | SC can time out and complete a run that has gone inactive beyond a threshold (`runTimeout` collection). This is a timeout guard, not a quality-gate GO/NO-GO. No rule-based pass/fail threshold on results. |
 
 ---
 
@@ -116,15 +126,6 @@ SC groups runs by `ciBuildId` — a concept that links multiple parallel runs (p
 | **CI build grouping** | Phase 2 | SC's `ciBuildId` concept allows grouping related runs. CTRFHub may need a way to link multiple reports from the same pipeline execution. |
 | **GitHub commit status integration** | Phase 2 | SC's GitHub hook sets commit statuses. This is high-value for CI workflows — teams see pass/fail directly on PRs. |
 
-### Already covered in `parking-lot.md`
-
-| Finding | Reference |
-|---|---|
-| Webhook/notification system | `parking-lot.md` — webhooks listed as post-MVP |
-| S3 storage | `parking-lot.md` — cloud storage noted |
-| Retention policies | `parking-lot.md` — data lifecycle management |
-| Export functionality | `parking-lot.md` — export listed |
-
 ### Explicitly out of scope for CTRFHub
 
 | Feature | Why N/A |
@@ -133,6 +134,17 @@ SC groups runs by `ciBuildId` — a concept that links multiple parallel runs (p
 | Instance reset / re-run | Same — not an orchestrator |
 | MongoDB support | CTRFHub is PostgreSQL + SQLite by design |
 | Cypress-specific wire protocol | CTRF is the chosen format; adapter conversion happens at the reporter level |
+| Live run interruption / Quality Gates | SC's `inactivityTimeoutSeconds` is a timeout guard, not a quality gate; neither tool has rule-based GO/NO-GO gates |
+| Plugin extensibility system | SC has no plugin system beyond driver swapping; not a gap to address from this tool |
+
+### Already covered in `parking-lot.md`
+
+| Finding | Reference |
+|---|---|
+| Webhook/notification system | `parking-lot.md` — webhooks listed as post-MVP |
+| S3 storage | `parking-lot.md` — cloud storage noted |
+| Retention policies | `parking-lot.md` — data lifecycle management |
+| Export functionality | `parking-lot.md` — export listed |
 
 ---
 

@@ -49,6 +49,10 @@
 | **Jira integration** | Not planned | ✅ `jira-plugin` + `xray-plugin` | `JiraExportPlugin` pushes test results to Jira Cloud. `XrayTestRunExportPlugin` exports to Xray test management. Both require API credentials. These are *export-on-generation* — not live sync. |
 | **CI build grouping** | Not planned | Partial — `ExecutorPlugin` tracks executor/build info | `ExecutorPlugin` reads `executor.json` (CI build name, URL, build order). This links the report to its CI context but doesn't group multiple reports. |
 | **Retention / cleanup** | Planned (TTL-based) | N/A | Static files — retention is filesystem-level. Delete old report directories manually or via CI retention policies. |
+| **AI cold-start story** | Works day 0 (LLM) | Works day 0 (regex config) | Allure's rule-based categories are configured once and work immediately. No training corpus needed. CTRFHub's LLM is similarly day-0 effective — but requires API access and has per-call cost. Neither tool has a cold-start problem; the contrast is with RP's ML approach. |
+| **Privacy architecture** | Per-project consent gate (opt-in) | N/A — no AI, no external data flow | Allure generates static reports locally. No log data leaves the machine. No external AI service, no indexing pipeline. Privacy is a non-issue — but also means zero AI insight. |
+| **Plugin / extensibility model** | In-process event bus | ✅ Mature plugin pipeline | `Reader` → `Aggregator2` → `ReportStorage` pipeline. Plugins are self-contained JARs contributed via `DefaultPluginLoader`. 10 bundled external plugins + the core `allure-generator` built-ins. Clean interface contracts; each plugin declares what it reads, writes, and needs. The reference design for extensibility. |
+| **Live run interruption / Quality Gates** | Not yet (post-hoc model) | N/A — static generator | Allure has no server process to interrupt anything. `allure generate` always produces a full report. Quality Gates are absent — Allure shows results, it cannot act on them. |
 
 ---
 
@@ -165,6 +169,7 @@ Allure uniquely supports Prometheus and InfluxDB metric export. This means CI pi
 | JUnit XML / xUnit XML / TRX parsing | CTRF is the chosen format; adapters handle conversion |
 | Jira integration | Enterprise feature, not MVP scope |
 | Screen diff / visual regression | Not in CTRFHub's scope |
+| Live run interruption / Quality Gates | Allure is a static generator; this dimension is N/A and not a gap from this tool |
 
 ---
 

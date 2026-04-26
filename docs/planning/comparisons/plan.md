@@ -165,6 +165,17 @@ ReportPortal is big enough to break into sub-phases internally:
 
 **Pause** after completing `reportportal.md`. Review with André before synthesis.
 
+### 3.4 Phase 3 retrospective — dimensions added
+
+Completing ReportPortal surfaced 4 more comparison dimensions. These are now added to the Phase 4 synthesis table:
+
+| New dimension | Why it matters | Discovered from |
+|---|---|---|
+| **AI cold-start story** | LLM = useful day 0; traditional ML = requires a corpus of human-triaged failures first; rule-based = configured on day 0 but needs pattern authorship. Adoption curve differs radically by approach. | RP analyzer `DefectTypeModel` is a `DummyClassifier` until trained; cold-start project sees zero ML value |
+| **Privacy architecture** | RP unconditionally indexes all log text into OpenSearch — no opt-out, no data minimization. CTRFHub's per-project consent gate is a structural commitment, not a feature checkbox. RP cannot retrofit this without redesigning the entire analyzer pipeline. | `auto_analyzer_service.py`: no consent check before log indexing; `ES_HOSTS` is always connected |
+| **Plugin / extensibility model** | How third-party code is integrated: hot-loadable JARs (RP), in-process event bus (CTRFHub), static plugin config (Allure), absent (SC). Determines the ecosystem development model and maintenance burden. | `PluginController`, `plugin_type` table, `COM_TA_REPORTPORTAL_JOB_LOAD_PLUGINS_CRON` |
+| **Live run interruption / Quality Gates** | RP can interrupt in-progress CI launches; Quality Gates (rule-based GO/NO-GO on a build) are on the RP roadmap. CTRFHub only sees finished reports — this is an adjacent product category that requires a streaming ingest protocol to enter. | `COM_TA_REPORTPORTAL_JOB_INTERRUPT_BROKEN_LAUNCHES_CRON`, `ROADMAP.md` |
+
 ---
 
 ## Phase 4 — Synthesis
@@ -196,7 +207,13 @@ A comprehensive comparison matrix with CTRFHub + 3 comparables across all dimens
 | CI build grouping | Not yet | ciBuildId | ExecutorPlugin (partial) | … |
 | Monitoring export | Not yet | None | Prometheus + InfluxDB | … |
 | Issue tracker integration | Not planned | None | Jira + Xray | … |
-| Deployment deps | 1 container (Node+SQLite) | 4 containers + MongoDB | 0 (CLI tool) | … |
+| Deployment deps | 1 container (Node+SQLite) | 4 containers + MongoDB | 0 (CLI tool) | 9–10 containers + Postgres + RabbitMQ + OpenSearch |
+| AI cold-start story | Works day 0 (LLM) | None | Works day 0 (regex config) | Requires trained corpus (traditional ML) |
+| Privacy architecture | Per-project consent gate (opt-in) | N/A (no AI) | N/A (no AI, static) | Unconditional log indexing, no opt-out |
+| Plugin / extensibility | In-process event bus | None | Static plugin config (Java) | Hot-loadable JARs (cron reload) |
+| Live run interruption | Not yet (post-hoc model) | Yes (run orchestrator) | N/A (static generator) | Yes (`interrupt_broken_launches` cron) |
+| Quality Gates | Not yet | Not yet | N/A | Planned (ROADMAP) |
+| Time to first value | ~60 seconds (docker run + POST) | ~30 min (4-container stack + Cypress adapter) | ~5 min (CLI install + generate) | Hours (9-service stack + adapter install + agent config) |
 | … | … | … | … | … |
 
 #### Section 2: Findings that should route into `gaps.md`
@@ -247,9 +264,67 @@ A dedicated analysis of how CTRFHub's modern tech choices provide structural adv
 - **CTRF as a universal format** — framework-agnostic JSON standard with growing adapter ecosystem vs proprietary wire protocols (SC) or tool-specific result formats (Allure, RP)
 - **Contributor accessibility** — Node.js/TypeScript has a larger potential contributor pool than JVM (Allure, RP) or the niche intersection of Express+React+GraphQL+MongoDB (SC)
 
-**Deployment**
-- **Single-binary / single-container** — CTRFHub's deployment story (one container, zero external services) vs SC (4 containers + MongoDB) vs RP (6+ containers + Postgres + Elasticsearch + RabbitMQ + MinIO)
+**Deployment & time to first value**
+
+- **Single-binary / single-container** — CTRFHub's deployment story (one container, zero external services) vs SC (4 containers + MongoDB) vs RP (9–10 containers + Postgres + Elasticsearch + RabbitMQ + MinIO)
 - Why this matters for adoption: teams can evaluate CTRFHub in 60 seconds, not 60 minutes
+
+#### Time to first value
+
+This is the most important single dimension for adoption by small and mid-size teams. It has five components:
+
+**1. Service / container count**
+The number of processes a team must start and keep healthy before they see any data at all.
+
+| Tool | Services required | Note |
+|---|:---:|---|
+| CTRFHub | 1 | Node.js + SQLite in one container |
+| Allure 2 | 0 | CLI tool; no server |
+| Sorry Cypress | 4 | MongoDB + director + api + dashboard |
+| ReportPortal | 9–10 | Postgres + RabbitMQ + OpenSearch + migrations + index + ui + api + uat + jobs + analyzer |
+
+RP's minimum viable deployment is nine services. Every one of them must pass its health check before the stack is usable. The `docker-compose.yml` alone is 667 lines.
+
+**2. Resource floor**
+The infrastructure you must provision and keep running before a single test result is ingested.
+
+| Tool | RAM floor | External services |
+|---|---|---|
+| CTRFHub | ~256 MB | None |
+| Allure 2 | ~256 MB (JVM, transient) | None |
+| Sorry Cypress | ~512 MB | MongoDB |
+| ReportPortal | > 3 GB | Postgres, RabbitMQ, OpenSearch |
+
+RP's API service alone is configured with `-Xmx1g`. OpenSearch adds another `-Xmx512m`. Before you've ingested a single test, you've committed more RAM than most hobby servers have available. For a small team evaluating the tool, this is not evaluation cost — it's production cost.
+
+**3. AI cold-start**
+How long before the AI feature the tool is marketed on actually helps you.
+
+| Tool | AI cold-start | Why |
+|---|---|---|
+| CTRFHub | Day 0 | LLM categorization works immediately; no prior data needed |
+| Allure 2 | Day 0 | Rule-based regex; configured once, works immediately |
+| Sorry Cypress | N/A | No AI |
+| ReportPortal | Unknown — weeks to months | `DefectTypeModel` is instantiated as a `DummyClassifier` returning zeros until the project has accumulated a training corpus of human-triaged failures. A cold-start project gets full infrastructure cost, zero ML benefit. |
+
+RP's marketing centers on its auto-analyzer. But the auto-analyzer is a `DummyClassifier` for new projects. A small team adopting RP specifically for the AI will wait weeks or months before it does anything useful.
+
+**4. Onboarding path**
+What a team must do between "we decided to try this tool" and "we can see our first test result."
+
+| Tool | Steps to first data point |
+|---|---|
+| CTRFHub | 1. `docker run ctrfhub` → 2. `curl -X POST /api/runs` with a CTRF JSON file |
+| Allure 2 | 1. `brew install allure` → 2. add an adapter to your test suite → 3. `allure generate` |
+| Sorry Cypress | 1. Start 4 containers → 2. point `CYPRESS_API_URL` at the director → 3. run Cypress with `--record` |
+| ReportPortal | 1. Start 9–10 containers (wait for all health checks) → 2. install the language-specific `agent-*` library in your test suite → 3. configure agent credentials in your test framework config → 4. configure CI to pass the agent credentials → 5. run tests → 6. wait for the RabbitMQ analyzer queue to drain |  
+
+RP's onboarding is a multi-step, multi-system operation. Each step is a failure point. Teams evaluating the tool spend their evaluation time on infrastructure, not on the product itself.
+
+**5. Minimum viable deployment is a commitment, not an evaluation**
+For RP, there is no "try it" mode that is lighter than production. The nine-service stack *is* the minimum. A team cannot spin up a lighter version to evaluate the UX, then scale up later — the architecture is fixed. If the team decides RP isn't right for them after a week, they've spent a week running nine services.
+
+For CTRFHub, the evaluation is one Docker command. If it's not the right fit, the cost of the experiment was one command and a few minutes.
 
 ### 4.3 Final checkpoint
 
