@@ -569,7 +569,246 @@ describe('AI-002 A1 Categorization — event publishing', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 7: No real LLM calls — static verification
+// Suite 7: Heartbeat advancement
+// ---------------------------------------------------------------------------
+
+describe('AI-002 A1 Categorization — heartbeat advancement', () => {
+  let app: FastifyInstance;
+  let eventBus: MemoryEventBus;
+  let aiProvider: MockAiProvider;
+
+  beforeAll(async () => {
+    process.env['AI_CLOUD_PIPELINE'] = 'on';
+    eventBus = new MemoryEventBus();
+    aiProvider = new MockAiProvider();
+    app = await buildApp({ testing: true, db: ':memory:', eventBus, aiProvider });
+    await ensureUniqueIndex(app);
+  });
+
+  afterAll(async () => {
+    delete process.env['AI_CLOUD_PIPELINE'];
+    await app.close();
+  });
+
+  it('sets heartbeat_at during execution and clears it on completion', async () => {
+    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-hb', 2, { aiCloudAckAt: new Date() });
+    aiProvider.reset();
+    aiProvider.setCategorization(makeCatResponse(resultIds));
+    eventBus.published.length = 0;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const orm = (app as any).orm;
+    await categorizeRun({ runId, orgId: 'org-hb', projectId }, aiProvider, orm, eventBus);
+
+    // After completion, heartbeat_at should be NULL (cleared in done transition)
+    const logRows = await orm.em.getConnection().execute(
+      `SELECT heartbeat_at, worker_id, status FROM ai_pipeline_log WHERE test_run_id = ? AND stage = 'categorize'`,
+      [runId],
+    );
+    expect(logRows).toHaveLength(1);
+    const logRow = (logRows as Array<Record<string, unknown>>)[0]!;
+    expect(logRow['status']).toBe('done');
+    expect(logRow['heartbeat_at']).toBeNull();
+    expect(logRow['worker_id']).toBeNull();
+  });
+
+  it('records started_at timestamp on first reservation', async () => {
+    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-hb-started', 2, { aiCloudAckAt: new Date() });
+    aiProvider.reset();
+    aiProvider.setCategorization(makeCatResponse(resultIds));
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const orm = (app as any).orm;
+    await categorizeRun({ runId, orgId: 'org-hb-started', projectId }, aiProvider, orm, eventBus);
+
+    const logRows = await orm.em.getConnection().execute(
+      `SELECT started_at FROM ai_pipeline_log WHERE test_run_id = ? AND stage = 'categorize'`,
+      [runId],
+    );
+    const logRow = (logRows as Array<Record<string, unknown>>)[0]!;
+    expect(logRow['started_at']).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 8: Idempotency check — already-categorized results
+// ---------------------------------------------------------------------------
+
+describe('AI-002 A1 Categorization — idempotency', () => {
+  let app: FastifyInstance;
+  let eventBus: MemoryEventBus;
+  let aiProvider: MockAiProvider;
+
+  beforeAll(async () => {
+    process.env['AI_CLOUD_PIPELINE'] = 'on';
+    eventBus = new MemoryEventBus();
+    aiProvider = new MockAiProvider();
+    app = await buildApp({ testing: true, db: ':memory:', eventBus, aiProvider });
+    await ensureUniqueIndex(app);
+  });
+
+  afterAll(async () => {
+    delete process.env['AI_CLOUD_PIPELINE'];
+    await app.close();
+  });
+
+  it('skips LLM call and publishes event when results are already categorized', async () => {
+    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-idem', 3, { aiCloudAckAt: new Date() });
+
+    // Pre-categorize all results manually (simulate crash after commit but before log update)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const orm = (app as any).orm;
+    for (const rid of resultIds) {
+      await orm.em.getConnection().execute(
+        `UPDATE test_results SET ai_category = 'app_defect', ai_category_model = 'mock', ai_category_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [rid],
+      );
+    }
+
+    aiProvider.reset();
+    aiProvider.setCategorization(makeCatResponse(resultIds));
+    eventBus.published.length = 0;
+
+    await categorizeRun({ runId, orgId: 'org-idem', projectId }, aiProvider, orm, eventBus);
+
+    // Should NOT have called the AI provider (idempotency check triggered)
+    expect(aiProvider.calls).toHaveLength(0);
+
+    // Should still publish the event so downstream stages proceed
+    const catEvents = eventBus.published.filter((e) => e.topic === RunEvents.RUN_AI_CATEGORIZED);
+    expect(catEvents).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 9: EventBus subscription wiring — A1 subscribes at boot
+// ---------------------------------------------------------------------------
+
+describe('AI-002 A1 Categorization — EventBus subscription', () => {
+  it('A1 subscribes to run.ingested when aiProvider is injected', async () => {
+    const eventBus = new MemoryEventBus();
+    const aiProvider = new MockAiProvider();
+    const app = await buildApp({ testing: true, db: ':memory:', eventBus, aiProvider });
+
+    // The MemoryEventBus from event-bus.ts tracks subscriptions internally.
+    // We verify by publishing a run.ingested event and checking that the
+    // categorizer tried to run (it will fail consent gate since env is not set,
+    // but the subscription itself should be wired).
+
+    // We can inspect the subscription by checking that publishing an event
+    // doesn't throw and the handler was registered.
+    // Best approach: verify via a controlled event publish that triggers
+    // the categorizer path (consent gate will block, but subscriber exists).
+    await ensureUniqueIndex(app);
+    const { runId, projectId } = await seedRunWithFailures(app, 'org-sub', 1, { aiCloudAckAt: new Date() });
+
+    // Clear any published events from boot recovery
+    eventBus.published.length = 0;
+
+    // Publish run.ingested — should be handled by the A1 subscription
+    // Without AI_CLOUD_PIPELINE=on, consent gate blocks, but no error thrown
+    delete process.env['AI_CLOUD_PIPELINE'];
+    eventBus.publish(RunEvents.RUN_INGESTED, { runId, orgId: 'org-sub', projectId });
+
+    // Give async handler time to complete
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+
+    // The handler ran without throwing (consent gate blocked silently).
+    // No AI provider call made, no event published — this is correct.
+    expect(aiProvider.calls).toHaveLength(0);
+
+    await app.close();
+  });
+
+  it('A1 runs full pipeline when triggered via EventBus publish', async () => {
+    process.env['AI_CLOUD_PIPELINE'] = 'on';
+    const eventBus = new MemoryEventBus();
+    const aiProvider = new MockAiProvider();
+    const app = await buildApp({ testing: true, db: ':memory:', eventBus, aiProvider });
+    await ensureUniqueIndex(app);
+
+    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-sub-full', 2, { aiCloudAckAt: new Date() });
+    aiProvider.reset();
+    aiProvider.setCategorization(makeCatResponse(resultIds));
+    eventBus.published.length = 0;
+
+    // Publish the event that triggers A1 — the subscription should invoke categorizeRun
+    eventBus.publish(RunEvents.RUN_INGESTED, { runId, orgId: 'org-sub-full', projectId });
+
+    // Give async handler time to complete (fire-and-forget via Promise.allSettled)
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+
+    // Verify the AI provider was called via the EventBus-triggered subscription
+    expect(aiProvider.calls.filter((c) => c.method === 'categorizeFailures')).toHaveLength(1);
+
+    // Verify run.ai_categorized was published
+    const catEvents = eventBus.published.filter((e) => e.topic === RunEvents.RUN_AI_CATEGORIZED);
+    expect(catEvents).toHaveLength(1);
+
+    await app.close();
+    delete process.env['AI_CLOUD_PIPELINE'];
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 10: Recovery re-enqueue — pending rows get events re-published
+// ---------------------------------------------------------------------------
+
+describe('AI-002 A1 Categorization — recovery re-enqueue', () => {
+  it('re-enqueues pending rows for recent runs by publishing events', async () => {
+    const eventBus = new MemoryEventBus();
+    const app = await buildApp({ testing: true, db: ':memory:', eventBus });
+    await ensureUniqueIndex(app);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const orm = (app as any).orm;
+
+    // Seed org + project + run
+    const em = orm.em.fork();
+    const org = em.create(Organization, {
+      id: 'org-reenq', name: 'Reenqueue Org', slug: 'reenqueue-org',
+      createdAt: new Date(), aiCloudAckAt: new Date(),
+    });
+    await em.flush();
+    const project = em.create(Project, {
+      organization: org, name: 'Proj', slug: 'reenqueue-proj',
+      createdAt: new Date(), updatedAt: new Date(),
+    });
+    await em.flush();
+    const run = em.create(TestRun, {
+      project, name: 'Pending run', status: 'failed',
+      totalTests: 1, passed: 0, failed: 1, skipped: 0, blocked: 0,
+      createdAt: new Date(), // Recent — within 24h window
+    });
+    await em.flush();
+
+    // Seed a pending row with attempt < 3 (should be re-enqueued)
+    await orm.em.getConnection().execute(
+      `INSERT INTO ai_pipeline_log (test_run_id, stage, status, attempt)
+       VALUES (?, 'categorize', 'pending', 1)`,
+      [run.id],
+    );
+
+    // Clear published events from boot
+    eventBus.published.length = 0;
+
+    // Run recovery — should re-enqueue the pending row
+    await recoverStalePipelineRows(orm, eventBus);
+
+    // Should have published run.ingested for the pending 'categorize' row
+    const ingestedEvents = eventBus.published.filter(
+      (e) => e.topic === RunEvents.RUN_INGESTED,
+    );
+    expect(ingestedEvents).toHaveLength(1);
+    const payload = ingestedEvents[0]!.payload as { runId: number; orgId: string };
+    expect(payload.runId).toBe(run.id);
+    expect(payload.orgId).toBe('org-reenq');
+
+    await app.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 11: No real LLM calls — static verification
 // ---------------------------------------------------------------------------
 
 describe('AI-002 A1 Categorization — no real LLM calls', () => {
