@@ -27,6 +27,7 @@ Deferred decisions and infrastructure tasks tracked here until they meet their p
 | PL-019 | Mobile-degraded-functional viewport | Post-MVP | 🟢 Deferred |
 | PL-020 | Write API for project & token management (IaC) | Phase 2 | 🟢 Deferred |
 | PL-021 | Rate-limit response headers (`X-RateLimit-*`) | Phase 2 | 🟢 Deferred |
+| PL-022 | Operator upgrade workflow (script + documentation) | First public release | 🟢 Deferred |
 
 ---
 
@@ -1075,6 +1076,65 @@ Any one of:
 - PL-015 (OpenAPI) promotes — the spec tooling will expect standard rate-limit headers and flag their absence.
 
 Promotion is a one-line config change + tests. Do it at the same time as any other `@fastify/rate-limit` config touch to avoid a dedicated story.
+
+---
+
+## PL-022 — Operator upgrade workflow (script + documentation)
+
+**Source:** Gap surfaced 2026-04-27 during the Tugboat-preview wireup work; no prior planning doc covers operator-facing version upgrades for self-hosted CTRFHub.
+**Milestone:** First public release / pre-1.0 cut
+**See also:** `database-design.md §Schema versioning`, `deployment-architecture.md`, `docs/ops/backup-and-restore.md` (DD-026), INFRA-005
+
+INFRA-005 made schema-generator-at-boot the upgrade primitive — there is no migration runner to invoke, no bespoke script for operators to run. A binary upgrade is `docker pull && docker compose up -d`; the new container's `orm.schema.updateSchema()` converges the schema on first boot, with `/health` returning `503` while `bootState=migrating`. So the *script* portion of "upgrade script + documentation" is mostly already built into the runtime.
+
+What's missing is the **operator-facing documentation** that walks through that workflow safely, and the supporting policy decisions (semver discipline, release-notes channels, image-tag pinning) that make safe upgrades possible.
+
+### What this is (when promoted)
+
+A new `docs/ops/upgrade.md` with five concrete pieces:
+
+1. **Standard upgrade procedure** — pull the new image tag, restart the container, wait for `/health` to return 200. Show the exact `docker compose pull && docker compose up -d` invocation and the `/health` polling pattern. Cross-reference DD-026 for pre-upgrade backup recipes.
+
+2. **Pre-upgrade backup checklist** — short bullet list pointing at the existing recipes in `docs/ops/backup-and-restore.md`: `pg_dump -F c` for Postgres, `sqlite3 .backup` for SQLite, `tar` for the artifact directory. Frame it as "do this before any upgrade, full stop."
+
+3. **Breaking-change communication policy.** What does CTRFHub commit to in semver terms? Which kinds of changes ship in minor vs. major? Where do operators learn about breaking changes — release notes, `CHANGELOG.md`, GitHub Releases? This is a *policy* decision that should be made before v1.0, not after.
+
+4. **Rollback procedure.** Schema-generator at boot is **forward-only** — it adds columns and indexes but won't drop data without an explicit signal. So rollback is *not* `docker compose up -d <old-image>` (that would leave the v1.1-shaped schema, with the v1.0 binary that doesn't know about the new columns and may fail at boot or behave oddly). Rollback = stop the service, restore the pre-upgrade backup, start the old binary against the restored schema. Spell this out with the exact commands.
+
+5. **Image-tag pinning recommendation.** Discourage `:latest`; recommend pinning to specific version tags (`ctrfhub:1.0.3`, not `ctrfhub:latest`). Explain the rationale: predictable upgrades, clean rollback, no surprise breakage when a CI pipeline does `docker compose pull` against `:latest`.
+
+### Why it's deferred
+
+- **The runtime already handles the mechanical part.** Per INFRA-005, `orm.schema.updateSchema()` runs at boot and converges the schema. That's the "script." Pre-1.0, there is no operator who has actually upgraded between two real versions of CTRFHub, so the documentation would be entirely hypothetical.
+
+- **Real upgrade content emerges from real upgrades.** The version-upgrade documentation that ages well is the kind that captures lessons from the *first* upgrade an operator does — the gotcha they hit, the wording that confused them, the rollback they needed. Writing it ahead of that produces brittle docs.
+
+- **Versioning policy isn't urgent until v1.0 cuts.** Pre-MVP, CTRFHub is iterating fast and explicitly pre-stable; semver and breaking-change policy are abstract until there's a "1.0.0" tag to be backwards-compatible *with*.
+
+- **Schema-generator's forward-only behaviour means rollback is data-restore, not data-migration.** That's a property of the runtime model, not a documentation gap; documenting it is a half-day write-up once the runtime is exercised.
+
+### Promotion triggers
+
+Any one of:
+
+- **First public alpha/beta release tag** ships (e.g. `v0.9.0`). At that point, the docs need to exist before anyone outside the project tries to upgrade between two beta releases.
+- **First "how do I upgrade?" question** in any public channel — issues, Discord, support email. Demonstrates that even pre-1.0, real users want a procedure.
+- **First breaking change ships** that requires explicit operator action (e.g., a renamed env var, a deprecated API endpoint). Shipping it without an `upgrade.md` to point operators at is a footgun.
+- **First operator-reported incident** caused by an upgrade gone wrong. The incident itself becomes the seed for the rollback section.
+
+### Estimated effort
+
+~1 day for the initial `docs/ops/upgrade.md` write-up, assuming the policy decisions (semver, where breaking changes get communicated) are settled in the same session. Half a day to revise after the first real upgrade exercises the docs.
+
+### Non-goals even when PL-022 promotes
+
+- **A bespoke `ctrfhub upgrade` CLI.** Schema-generator at boot already makes "upgrade" a no-op from the operator's perspective; wrapping `docker compose pull && up -d` in a CLI adds rope without value. PL-016's `ctrfhub backup`/`restore` CLI is a separate question — backup *is* a workflow worth wrapping; upgrade isn't.
+- **Automated rollback CLI.** Mattermost-style `mattermost db downgrade` is in PL-016's promotion-trigger list; it doesn't belong here. PL-022 is purely documentation + policy.
+- **Cross-version data-migration tooling.** All migrations are forward-only via schema-generator. Operators who need to move data between non-adjacent versions do it via an intermediate upgrade chain, not a magic-skip tool.
+
+### Until PL-022 promotes
+
+Operators upgrading pre-1.0 alpha/beta builds get the implicit procedure: pull image, restart, watch `/health`. The schema converges automatically per INFRA-005. The pre-upgrade backup recipes in `docs/ops/backup-and-restore.md` are already authoritative. Rollback is "restore from backup" — same answer the parking-lot entry will eventually formalise. The pre-promotion gap is mostly a *discoverability* gap (no doc points operators at the procedure) rather than a *capability* gap.
 
 ---
 
