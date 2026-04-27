@@ -3,7 +3,7 @@
 # Docs: https://qodo-merge-docs.qodo.ai/usage-guide/configuration_options/
 # Model IDs: https://openrouter.ai/models  ← verify before first run; update model/fallback fields if names have drifted
 #
-# Default model: Kimi K2.6 Thinking via OpenRouter (~$0.02–$0.03 per 200-line PR, near-Opus-4.6 quality).
+# Default model: Kimi K2.5 via OpenRouter (~$0.005–$0.02 per 200-line PR, ~30% faster than K2.6, comparable catch quality on the diff size we typically review).
 # Fallback: Opus 4.6 via OpenRouter (rate-limit / outage recovery).
 # Override per-PR: add the `high-stakes` label to force Opus 4.6 primary (see .github/workflows/pr-review.yml).
 
@@ -11,10 +11,13 @@
 # Model IDs verified against https://openrouter.ai/api/v1/models 2026-04-25
 # Auth: OPENAI_API_KEY=<openrouter_key> + OPENAI_API_BASE=https://openrouter.ai/api/v1
 # Model names use vendor/model format (no openrouter/ prefix needed with API base override).
-# Kimi K2.6 was released on 2026-04-20 (catalog ID `moonshotai/kimi-k2.6-20260420`).
-# We use the unversioned alias so we follow the K2.6 family forward without locking
-# to a snapshot. If OpenRouter ever drops the unversioned alias, switch to the dated form.
-model = "openrouter/moonshotai/kimi-k2.6"
+# Kimi K2.5 (older generation than K2.6) — unversioned alias so we follow the K2.5
+# family forward without locking to a snapshot. We dropped from K2.6 -> K2.5 on
+# 2026-04-27 after observing PR-Agent runs on simple chore PRs taking 6+ minutes
+# (high latency variance on K2.6 with no measurable catch-rate improvement on the
+# diff sizes we typically review). Swap back to K2.6 if average review latency
+# becomes irrelevant or if K2.5 catch quality regresses.
+model = "openrouter/moonshotai/kimi-k2.5"
 fallback_models = ["openrouter/anthropic/claude-opus-4.6"]
 verbosity_level = 1
 # Don't truncate our skills/ context — reviews need the full spec context loaded

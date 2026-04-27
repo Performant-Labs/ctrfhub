@@ -97,6 +97,138 @@ jobs:
           CONFIG.MODEL: "openrouter/anthropic/claude-opus-4.6"
           CONFIG.FALLBACK_MODELS: '["openrouter/moonshotai/kimi-k2.6"]'
 
+      - name: Apply score-bracket label from PR-Agent review
+        # Parses the most recent PR-Agent comment for its Score field and
+        # applies one of four bracket labels: score-90+, score-80-89,
+        # score-70-79, score-below-70. Bracket (not exact) so we don't end
+        # up with 100 distinct label values cluttering gh-dash filters.
+        # The label appears in the PR header right under the title -- fastest
+        # signal for "is this PR ready to merge?" before opening the diff.
+        if: always() && (steps.review-default.outcome == 'success' || steps.review-highstakes.outcome == 'success')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUM="${{ github.event.pull_request.number || github.event.issue.number }}"
+          if [[ -z "$PR_NUM" || "$PR_NUM" == "null" ]]; then
+            echo "No PR number -- skipping label step"
+            exit 0
+          fi
+
+          # Ensure the four bracket labels exist (idempotent -- ignore "already exists" errors).
+          gh label create 'score-90+' --color '0e8a16' --description 'PR-Agent score 90-100 (ship)' --repo "${{ github.repository }}" 2>/dev/null || true
+          gh label create 'score-80-89' --color 'fbca04' --description 'PR-Agent score 80-89 (review carefully)' --repo "${{ github.repository }}" 2>/dev/null || true
+          gh label create 'score-70-79' --color 'e99695' --description 'PR-Agent score 70-79 (address suggestions)' --repo "${{ github.repository }}" 2>/dev/null || true
+          gh label create 'score-below-70' --color 'b60205' --description 'PR-Agent score <70 (probable blocking issues)' --repo "${{ github.repository }}" 2>/dev/null || true
+
+          # Pull the most recent PR-Agent (github-actions[bot]) comment.
+          # PR-Agent uses persistent_comment=true so there's typically one comment that gets edited in place.
+          LATEST_BODY=$(gh api "repos/${{ github.repository }}/issues/$PR_NUM/comments"             --jq '[.[] | select(.user.login == "github-actions[bot]") | .body] | last // ""')
+
+          # Extract the score. PR-Agent's reviewer guide format is:
+          #   <strong>Score</strong>: 92
+          # or in plain markdown:
+          #   **Score**: 92
+          SCORE=$(echo "$LATEST_BODY" | grep -oE '[Ss]core[^0-9]{0,10}[0-9]+' | grep -oE '[0-9]+' | head -1)
+          if [[ -z "$SCORE" ]]; then
+            echo "No score found in latest PR-Agent comment -- skipping label."
+            exit 0
+          fi
+          echo "Extracted PR-Agent score: $SCORE"
+
+          # Remove any existing score-* labels (clean slate before adding the new one).
+          for L in 'score-90+' 'score-80-89' 'score-70-79' 'score-below-70'; do
+            gh issue edit "$PR_NUM" --remove-label "$L" --repo "${{ github.repository }}" 2>/dev/null || true
+          done
+
+          # Apply the matching bracket.
+          if (( SCORE >= 90 )); then
+            BRACKET='score-90+'
+          elif (( SCORE >= 80 )); then
+            BRACKET='score-80-89'
+          elif (( SCORE >= 70 )); then
+            BRACKET='score-70-79'
+          else
+            BRACKET='score-below-70'
+          fi
+          gh issue edit "$PR_NUM" --add-label "$BRACKET" --repo "${{ github.repository }}"
+          echo "Applied label: $BRACKET"
+
+      - name: Inject score banner into PR description
+        # Edits the PR body to insert a one-line banner inside an
+        # <!-- argos-status:start --> ... <!-- argos-status:end --> block at the
+        # very top, preserving the rest of the body. The banner is updated on
+        # every review (block stripped + reinjected). Top-of-page visibility
+        # for the score / bracket / model / timestamp -- complementary to the
+        # bracket label (which appears in the PR header).
+        if: always() && (steps.review-default.outcome == 'success' || steps.review-highstakes.outcome == 'success')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUM="${{ github.event.pull_request.number || github.event.issue.number }}"
+          if [[ -z "$PR_NUM" || "$PR_NUM" == "null" ]]; then
+            echo "No PR number -- skipping banner"
+            exit 0
+          fi
+
+          # Re-fetch the latest PR-Agent comment + extract score (same logic as label step).
+          LATEST_BODY=$(gh api "repos/${{ github.repository }}/issues/$PR_NUM/comments"             --jq '[.[] | select(.user.login == "github-actions[bot]") | .body] | last // ""')
+          SCORE=$(echo "$LATEST_BODY" | grep -oE '[Ss]core[^0-9]{0,10}[0-9]+' | grep -oE '[0-9]+' | head -1)
+          if [[ -z "$SCORE" ]]; then
+            echo "No score found -- skipping banner"
+            exit 0
+          fi
+
+          # Choose bracket + emoji
+          if (( SCORE >= 90 )); then
+            BRACKET='score-90+'
+            EMOJI='🟢'
+          elif (( SCORE >= 80 )); then
+            BRACKET='score-80-89'
+            EMOJI='🟡'
+          elif (( SCORE >= 70 )); then
+            BRACKET='score-70-79'
+            EMOJI='🟠'
+          else
+            BRACKET='score-below-70'
+            EMOJI='🔴'
+          fi
+
+          # Which model ran
+          if [[ "${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}" == "true" ]]; then
+            MODEL='claude-opus-4.6'
+          else
+            MODEL='kimi-k2.5'
+          fi
+
+          NOW_UTC=$(date -u '+%Y-%m-%d %H:%M UTC')
+
+          # Pull the current PR body to a file (avoids shell-quoting hell on bodies
+          # containing $-references or backticks).
+          gh pr view "$PR_NUM" --json body --jq .body --repo "${{ github.repository }}" > /tmp/pr-body-current.md
+
+          # Strip any prior argos-status block (idempotent — runs cleanly on every review).
+          sed -i.bak '/<!-- argos-status:start -->/,/<!-- argos-status:end -->/d' /tmp/pr-body-current.md
+          rm -f /tmp/pr-body-current.md.bak
+
+          # Compose new banner. Note: this is a comment-bounded HTML block, not a
+          # markdown blockquote, so it survives gh-edit cleanly.
+          cat > /tmp/pr-body-banner.md <<EOFBANNER
+          <!-- argos-status:start -->
+          > ${EMOJI} **PR-Agent Score: ${SCORE}** \`${BRACKET}\` · model: \`${MODEL}\` · reviewed: ${NOW_UTC}
+          <!-- argos-status:end -->
+
+          EOFBANNER
+
+          # Strip the heredoc indentation (leading 10 spaces).
+          sed -i.bak 's/^          //' /tmp/pr-body-banner.md
+          rm -f /tmp/pr-body-banner.md.bak
+
+          # Concatenate banner + (stripped) original body.
+          cat /tmp/pr-body-banner.md /tmp/pr-body-current.md > /tmp/pr-body-new.md
+
+          gh pr edit "$PR_NUM" --body-file /tmp/pr-body-new.md --repo "${{ github.repository }}"
+          echo "PR description updated with status banner (score $SCORE)"
+
       - name: Stamp review with model attribution
         if: always()
         env:
@@ -112,7 +244,7 @@ jobs:
           if [[ "${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}" == "true" ]]; then
             MODEL="openrouter/anthropic/claude-opus-4.6"
           else
-            MODEL="openrouter/moonshotai/kimi-k2.6"
+            MODEL="openrouter/moonshotai/kimi-k2.5"
           fi
 
           # Team-local timezone (auto-switches PDT↔PST) plus UTC for

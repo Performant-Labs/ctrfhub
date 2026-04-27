@@ -1,28 +1,34 @@
 # Mergify configuration for CTRFHub
 #
-# Conservative initial ruleset:
-#   - Auto-merge ONLY when the PR has the `automerge` label.
-#   - Required checks include Lint & Typecheck (always runs) and the test
-#     suites (which may be skipped on config-only PRs per the paths-filter
-#     introduced in PR #45 -- the rule accepts both "success" and "skipped"
-#     so config-only PRs aren't held up waiting for tests that won't run).
-#   - E2E (Playwright) is NOT required yet: it was silently broken pre-#50
-#     and we want to confirm the new behavior before gating merges on it.
-#   - Squash-merge by default. The PRs in this repo are typically small and
-#     squash gives a clean main history.
+# Auto-merge triggers (either suffices):
+#   - `score-90+` label: applied automatically by the pr-review.yml workflow
+#     when PR-Agent scores the PR at 90+. This is the "PR-Agent gave it a thumbs up,
+#     CI is green, ship it" path -- removes the manual click-merge for high-confidence
+#     PRs. The maintainer never has to look at the PR if score and CI both pass.
+#   - `automerge` label: manual override -- applied by the maintainer when they've
+#     reviewed a sub-90 PR and want to merge anyway, OR when the score-* labels
+#     don't apply (e.g., a PR opened before pr-review.yml was reading scores).
 #
-# How to use:
-#   1. Open a PR as usual.
-#   2. Once it's reviewed (PR-Agent score acceptable, no requested changes,
-#      diff scanned manually), apply the `automerge` label.
-#   3. Mergify queues the PR; merges automatically when CI is green.
+# Required checks for the queue (same for both triggers):
+#   - Lint & Typecheck (always runs).
+#   - Unit Tests + Integration Tests: must be either green or skipped (config-only
+#     PRs skip them per the paths-filter introduced in PR #45).
+#   - E2E (Playwright) is NOT required yet -- silently broken pre-#50; revisit
+#     once a few green-on-real-app runs land.
+#
+# Workflow with both signals together:
+#   - Open PR -> CI runs -> PR-Agent reviews -> if score >= 90, label auto-applied
+#     -> Mergify queues -> CI green -> auto-merged. Maintainer touches the PR only
+#     when score < 90 (i.e., when there's something to look at).
+#
+# Squash-merge by default; PRs are typically small and squash keeps main clean.
 #
 # To extend later:
-#   - Add `check-success-or-neutral=E2E Tests (Playwright)` once the E2E
-#     job is reliably green (post-#50).
-#   - Add author-based rules (e.g., auto-label `automerge` for PRs from
-#     trusted bot accounts like Renovate).
-#   - Add a queue rule with merge-train semantics if PR volume grows.
+#   - Add `check-success-or-neutral=E2E Tests (Playwright)` once E2E is reliably
+#     green (post-#50).
+#   - Auto-label Renovate / Dependabot bot PRs with `automerge` for patch deps.
+#   - Tighten score gate to 95+ if 90+ proves too permissive (or relax to 85+
+#     if too restrictive).
 #
 # Docs: https://docs.mergify.com/configuration/
 
@@ -39,9 +45,12 @@ queue_rules:
     merge_method: squash
 
 pull_request_rules:
-  - name: auto-merge when labeled and CI is green
+  - name: auto-merge when labeled (or score-90+) and CI is green
     conditions:
-      - label=automerge
+      # Either trigger label accepts the PR for auto-merge.
+      - or:
+          - label=automerge        # manual override by maintainer
+          - label=score-90+         # PR-Agent gave it a 90-100 score
       - "#changes-requested-reviews-by=0"
       - check-success=Lint & Typecheck
       - or:
@@ -63,13 +72,15 @@ pull_request_rules:
         remove:
           - automerge
 
-  - name: warn if automerge label applied but checks failed
+  - name: warn if a merge-trigger label is applied but checks failed
     conditions:
-      - label=automerge
+      - or:
+          - label=automerge
+          - label=score-90+
       - check-failure=Lint & Typecheck
     actions:
       comment:
         message: |
-          The `automerge` label is applied but Lint & Typecheck is failing.
-          Mergify will not merge this PR until checks pass. Either resolve
-          the failure or remove the label.
+          A merge-trigger label (`automerge` or `score-90+`) is applied but
+          Lint & Typecheck is failing. Mergify will not merge this PR until
+          checks pass. Either resolve the failure or remove the label.
