@@ -115,3 +115,51 @@ services:
         - bash "${TUGBOAT_ROOT}/.tugboat/seed.sh"
         # Final health verification
         - wget -qO- http://localhost:3000/health
+
+      # ------ online: idempotently (re)start node when the preview comes online ------
+      #
+      # Why this exists: Tugboat free tier auto-suspends idle previews. On
+      # wake, ONLY the `online` stage runs -- not init/update/build. Without
+      # this stage, the woken container has no node process bound to :3000,
+      # and Tugboat's edge returns its "Preview Not Found" splash page even
+      # though the control plane reports the preview as "ready".
+      #
+      # Observed on PR #56 / main preview after free-tier idle suspend
+      # (2026-04-27): netstat showed nothing on :3000, container fs intact,
+      # but the URL 404'd until a manual `tugboat redeploy`.
+      #
+      # The pgrep guard makes this safe on both code paths:
+      #  - first build: `update` already started node, online sees it, no-op.
+      #  - suspend/wake: container resumes with no node, online starts it.
+      #  - refresh: `update` rebuilds + restarts node, online sees the fresh
+      #    process, no-op.
+      online:
+        - |
+          if pgrep -f "node dist/index.js" > /dev/null; then
+            echo "--- App already running (pid $(pgrep -f 'node dist/index.js')), skipping start"
+            exit 0
+          fi
+          # Tugboat sets TUGBOAT_DEFAULT_SERVICE_URL in the runtime env on
+          # every container start, so this is safe across wakes.
+          export BETTER_AUTH_URL="$TUGBOAT_DEFAULT_SERVICE_URL"
+          export PUBLIC_URL="$TUGBOAT_DEFAULT_SERVICE_URL"
+          echo "--- Starting node from online stage (post-wake or fresh container)..."
+          node dist/index.js > /tmp/app.log 2>&1 &
+          APP_PID=$!
+          for i in $(seq 1 30); do
+            STATUS=$(wget -qO- http://localhost:3000/health 2>/dev/null | grep -o '"status":"ok"' || true)
+            if [ -n "$STATUS" ]; then
+              echo "--- App healthy (pid $APP_PID)"
+              exit 0
+            fi
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              echo "--- App process exited unexpectedly. /tmp/app.log:"
+              tail -100 /tmp/app.log 2>/dev/null || echo "(no log captured)"
+              exit 1
+            fi
+            echo "--- Waiting for app... attempt $i/30"
+            sleep 2
+          done
+          echo "--- App did not become healthy within 60s. /tmp/app.log:"
+          tail -100 /tmp/app.log 2>/dev/null || echo "(no log captured)"
+          exit 1
