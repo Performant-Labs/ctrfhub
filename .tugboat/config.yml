@@ -58,8 +58,12 @@ services:
         # tugboatqa/node:22 is debian-based; use apt-get instead of apk.
         - apt-get update
         - apt-get install -y --no-install-recommends python3 make g++ wget
-        # Install all dependencies (including devDeps needed for tsc + tailwind build)
-        - npm ci
+        # Install all dependencies (including devDeps needed for tsc + tailwind build).
+        # --include=dev is required because the env block sets NODE_ENV=production,
+        # which would otherwise cause npm ci to skip devDeps. We need them at install
+        # time for tsc / @tailwindcss/cli (npm run build) AND for husky's prepare
+        # lifecycle hook to find the husky binary.
+        - npm ci --include=dev
 
       # ------ update: compile + start app (re-runs on PR code changes / refresh) ------
       update:
