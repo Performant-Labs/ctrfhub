@@ -72,20 +72,31 @@ services:
         # Compile TypeScript --- dist/ and build Tailwind CSS --- dist/assets/
         - npm run build
         # Start the app in the background AND wait for /health in a single shell
-        # block. If the start-and-wait were on separate YAML lines, each command
-        # would run in its own shell -- the shell that backgrounded node would
-        # exit immediately, the kernel would SIGHUP the child, and the wait loop
-        # in the next shell would poll a dead process. We redirect node output
-        # to /tmp/app.log so we can dump it if startup fails or never reaches
-        # /health.
+        # block. We use `setsid -f` to start node in a NEW session, fully
+        # detached from this shell -- without that, when this shell block
+        # exits at the end of `update`, the kernel sends SIGHUP to all of
+        # its children (including backgrounded ones) and node dies. That's
+        # what was happening pre-2026-04-27: the build's seed.sh would run
+        # successfully (because node was alive during build), then node
+        # died the instant `update`'s shell exited. The preview's URL has
+        # been broken from minute one of every preview's life, but we only
+        # noticed because Tugboat suspends idle previews and the URL
+        # 404'd as Tugboat's "Preview Not Found" splash.
+        #
+        # `setsid -f` (--fork) starts node in a brand-new session leader
+        # with no controlling terminal -- SIGHUP can't reach it from any
+        # shell exit. Output goes to /tmp/app.log so we can dump it if
+        # startup fails. We then capture the pid via pgrep (since $! after
+        # setsid -f gives us the setsid wrapper, not node).
         - |
-          # Tugboat sets TUGBOAT_DEFAULT_SERVICE_URL in the container's runtime
-          # env. Bash expands it here (YAML's ${...} only interpolates
-          # Repository-Settings env vars, not Tugboat runtime built-ins).
           export BETTER_AUTH_URL="$TUGBOAT_DEFAULT_SERVICE_URL"
           export PUBLIC_URL="$TUGBOAT_DEFAULT_SERVICE_URL"
-          node dist/index.js > /tmp/app.log 2>&1 &
-          APP_PID=$!
+          # Stop any stale node from a previous update (rebuild scenario).
+          pkill -f "node dist/index.js" 2>/dev/null || true
+          sleep 1
+          setsid -f node dist/index.js > /tmp/app.log 2>&1
+          sleep 1
+          APP_PID=$(pgrep -f "node dist/index.js" || true)
           echo "--- App started (PID $APP_PID); waiting for /health..."
           for i in $(seq 1 30); do
             STATUS=$(wget -qO- http://localhost:3000/health 2>/dev/null | grep -o '"status":"ok"' || true)
@@ -93,8 +104,7 @@ services:
               echo "--- App is healthy"
               break
             fi
-            # If the app process died, dump its log instead of waiting out the timer.
-            if ! kill -0 "$APP_PID" 2>/dev/null; then
+            if [ -n "$APP_PID" ] && ! kill -0 "$APP_PID" 2>/dev/null; then
               echo "--- App process exited unexpectedly. /tmp/app.log:"
               tail -100 /tmp/app.log 2>/dev/null || echo "(no log captured)"
               exit 1
@@ -105,7 +115,6 @@ services:
           if [ -z "$STATUS" ]; then
             echo "--- App did not become healthy within 60s. /tmp/app.log:"
             tail -100 /tmp/app.log 2>/dev/null || echo "(no log captured)"
-            wget -qO- http://localhost:3000/health 2>/dev/null || true
             exit 1
           fi
 
@@ -144,15 +153,18 @@ services:
           export BETTER_AUTH_URL="$TUGBOAT_DEFAULT_SERVICE_URL"
           export PUBLIC_URL="$TUGBOAT_DEFAULT_SERVICE_URL"
           echo "--- Starting node from online stage (post-wake or fresh container)..."
-          node dist/index.js > /tmp/app.log 2>&1 &
-          APP_PID=$!
+          # setsid -f detaches node from this shell session so it survives
+          # the shell exiting (no SIGHUP). See the note in `update` above.
+          setsid -f node dist/index.js > /tmp/app.log 2>&1
+          sleep 1
+          APP_PID=$(pgrep -f "node dist/index.js" || true)
           for i in $(seq 1 30); do
             STATUS=$(wget -qO- http://localhost:3000/health 2>/dev/null | grep -o '"status":"ok"' || true)
             if [ -n "$STATUS" ]; then
               echo "--- App healthy (pid $APP_PID)"
               exit 0
             fi
-            if ! kill -0 "$APP_PID" 2>/dev/null; then
+            if [ -n "$APP_PID" ] && ! kill -0 "$APP_PID" 2>/dev/null; then
               echo "--- App process exited unexpectedly. /tmp/app.log:"
               tail -100 /tmp/app.log 2>/dev/null || echo "(no log captured)"
               exit 1
