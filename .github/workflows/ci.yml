@@ -116,7 +116,7 @@ jobs:
           # node:22-alpine -> tugboatqa/node:22.
           BAD=$(grep -E '^[[:space:]]+image:' .tugboat/config.yml | grep -vE 'tugboatqa/' || true)
           if [ -n "$BAD" ]; then
-            echo "::error file=.tugboat/config.yml::Image not on free-tier allowlist. Use tugboatqa/* or node:* only."
+            echo "::error file=.tugboat/config.yml::Image not on free-tier allowlist. Use tugboatqa/* curated images only -- bare upstream images cause silent Tugboat Error 1064 (Node) or loud 1058 (Postgres) on free tier."
             echo "$BAD"
             exit 1
           fi
