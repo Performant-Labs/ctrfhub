@@ -1,0 +1,75 @@
+# Mergify configuration for CTRFHub
+#
+# Conservative initial ruleset:
+#   - Auto-merge ONLY when the PR has the `automerge` label.
+#   - Required checks include Lint & Typecheck (always runs) and the test
+#     suites (which may be skipped on config-only PRs per the paths-filter
+#     introduced in PR #45 -- the rule accepts both "success" and "skipped"
+#     so config-only PRs aren't held up waiting for tests that won't run).
+#   - E2E (Playwright) is NOT required yet: it was silently broken pre-#50
+#     and we want to confirm the new behavior before gating merges on it.
+#   - Squash-merge by default. The PRs in this repo are typically small and
+#     squash gives a clean main history.
+#
+# How to use:
+#   1. Open a PR as usual.
+#   2. Once it's reviewed (PR-Agent score acceptable, no requested changes,
+#      diff scanned manually), apply the `automerge` label.
+#   3. Mergify queues the PR; merges automatically when CI is green.
+#
+# To extend later:
+#   - Add `check-success-or-neutral=E2E Tests (Playwright)` once the E2E
+#     job is reliably green (post-#50).
+#   - Add author-based rules (e.g., auto-label `automerge` for PRs from
+#     trusted bot accounts like Renovate).
+#   - Add a queue rule with merge-train semantics if PR volume grows.
+#
+# Docs: https://docs.mergify.com/configuration/
+
+queue_rules:
+  - name: default
+    queue_conditions:
+      - check-success=Lint & Typecheck
+      - or:
+          - check-success=Unit Tests
+          - check-skipped=Unit Tests
+      - or:
+          - check-success=Integration Tests
+          - check-skipped=Integration Tests
+    merge_method: squash
+
+pull_request_rules:
+  - name: auto-merge when labeled and CI is green
+    conditions:
+      - label=automerge
+      - "#changes-requested-reviews-by=0"
+      - check-success=Lint & Typecheck
+      - or:
+          - check-success=Unit Tests
+          - check-skipped=Unit Tests
+      - or:
+          - check-success=Integration Tests
+          - check-skipped=Integration Tests
+    actions:
+      queue:
+        name: default
+
+  - name: remove automerge label after merge
+    conditions:
+      - merged
+      - label=automerge
+    actions:
+      label:
+        remove:
+          - automerge
+
+  - name: warn if automerge label applied but checks failed
+    conditions:
+      - label=automerge
+      - check-failure=Lint & Typecheck
+    actions:
+      comment:
+        message: |
+          The `automerge` label is applied but Lint & Typecheck is failing.
+          Mergify will not merge this PR until checks pass. Either resolve
+          the failure or remove the label.
