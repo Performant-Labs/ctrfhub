@@ -49,9 +49,29 @@ env:
 jobs:
   pr-agent:
     # Skip bot-authored events, and skip drafts unless someone triggered a slash command.
+    #
+    # The trailing `(github.event_name != 'issue_comment' || startsWith(...))`
+    # clause is the fix for a real-world cancel-in-progress race we hit on
+    # PRs #54/#55: Tugboat's "preview ready" comment (posted by the
+    # `aangelinsf` GitHub App identity, which presents as a User, not a Bot)
+    # arrived 60-120s after the pr-agent run kicked off, fired a second
+    # workflow run via the `issue_comment` trigger, and cancel-in-progress
+    # then aborted the first (in-flight) review. Because the label-applier
+    # and banner-injector steps gate on `outcome == 'success'`, neither ran
+    # — so PRs ended up with no score label and no status banner even though
+    # PR-Agent had finished its review work and posted the comment.
+    #
+    # Slash-command-only filtering for issue_comment events (`/review`,
+    # `/describe`, `/improve`, `/ask`, `/help`) means random PR comments
+    # — including Tugboat's preview-ready announcements, human chatter,
+    # and other Apps' notifications — never trigger pr-agent. PR-push events
+    # (`pull_request: synchronize`) still re-run the review on every commit,
+    # which is the path PR-Agent's `persistent_comment=true` is designed for.
     if: |
       github.event.sender.type != 'Bot' &&
-      (!github.event.pull_request.draft || github.event.issue.pull_request)
+      (!github.event.pull_request.draft || github.event.issue.pull_request) &&
+      (github.event_name != 'issue_comment' ||
+       startsWith(github.event.comment.body, '/'))
     runs-on: ubuntu-latest
     # 20 min ceiling: 15 min was tight even after PR #8 + PR #9 cuts. The
     # extra 5 min is a safety margin for transient model-provider latency,
