@@ -17,6 +17,11 @@
 # (OS, node version, package-lock.json hash). Cache hit -> skip npm ci,
 # saving ~25-40s per job on warm runs.
 #
+# Playwright browser cache: the Chromium binary (~150 MB) is cached keyed
+# on (OS, package-lock.json hash). On cache hit only OS system deps are
+# installed via playwright install-deps, saving ~2-3 min per E2E run.
+# System packages cannot be cached (they are apt-installed on the runner).
+#
 # Self-hosted runners are FORBIDDEN (cleanup/strip-self-hosted-runner-vestige).
 # All jobs run on GitHub-hosted ubuntu-latest.
 
@@ -241,8 +246,19 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
-      - name: Install Playwright Chromium + system deps
-        run: npx playwright install --with-deps chromium
+      - name: Cache Playwright Chromium browser
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chromium browser (cache miss)
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+
+      - name: Install Playwright system deps (always -- cannot cache apt packages)
+        run: npx playwright install-deps chromium
 
       - name: Build application (tsc + Tailwind CSS)
         run: npm run build
