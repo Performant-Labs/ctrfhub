@@ -148,7 +148,7 @@ jobs:
           #   <strong>Score</strong>: 92
           # or in plain markdown:
           #   **Score**: 92
-          SCORE=$(echo "$LATEST_BODY" | grep -oE '[Ss]core[^0-9]{0,10}[0-9]+' | grep -oE '[0-9]+' | head -1)
+          SCORE=$(echo "$LATEST_BODY" | grep -oE '[Ss]core[^0-9]{0,30}[0-9]+' | grep -oE '[0-9]+' | head -1)
           if [[ -z "$SCORE" ]]; then
             echo "No score found in latest PR-Agent comment -- skipping label."
             exit 0
@@ -192,7 +192,7 @@ jobs:
 
           # Re-fetch the latest PR-Agent comment + extract score (same logic as label step).
           LATEST_BODY=$(gh api "repos/${{ github.repository }}/issues/$PR_NUM/comments"             --jq '[.[] | select(.user.login == "github-actions[bot]") | .body] | last // ""')
-          SCORE=$(echo "$LATEST_BODY" | grep -oE '[Ss]core[^0-9]{0,10}[0-9]+' | grep -oE '[0-9]+' | head -1)
+          SCORE=$(echo "$LATEST_BODY" | grep -oE '[Ss]core[^0-9]{0,30}[0-9]+' | grep -oE '[0-9]+' | head -1)
           if [[ -z "$SCORE" ]]; then
             echo "No score found -- skipping banner"
             exit 0
