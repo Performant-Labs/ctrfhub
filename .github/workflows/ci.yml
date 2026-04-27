@@ -109,7 +109,12 @@ jobs:
           # 2. Image registry allowlist -- Docker Hub's official postgres requires a
           #    Docker volume that's only on Tugboat Premium. Use tugboatqa/* curated
           #    images instead. See PR #40 for prior history.
-          BAD=$(grep -E '^[[:space:]]+image:' .tugboat/config.yml | grep -vE 'tugboatqa/|node:' || true)
+          # Strict: only tugboatqa/* curated images are free-tier-friendly. Bare
+          # node:* / postgres:* etc. either require Docker Volumes (PG) or fail
+          # silently with Tugboat Error 1064 (node:22-alpine), so they are not
+          # allowed here. See PR history: #38, #39, #40, and the chore swapping
+          # node:22-alpine -> tugboatqa/node:22.
+          BAD=$(grep -E '^[[:space:]]+image:' .tugboat/config.yml | grep -vE 'tugboatqa/' || true)
           if [ -n "$BAD" ]; then
             echo "::error file=.tugboat/config.yml::Image not on free-tier allowlist. Use tugboatqa/* or node:* only."
             echo "$BAD"
