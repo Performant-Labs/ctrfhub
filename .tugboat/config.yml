@@ -69,23 +69,35 @@ services:
       update:
         # Compile TypeScript --- dist/ and build Tailwind CSS --- dist/assets/
         - npm run build
-        # Start the app in the background. Schema-generator (INFRA-005) syncs
-        # the SQLite DB at boot -- no separate migration step needed.
-        - node dist/index.js &
-        # Wait for the app to become healthy (schema sync + Better Auth migration).
-        # Max 60 seconds with 2-second intervals.
+        # Start the app in the background AND wait for /health in a single shell
+        # block. If the start-and-wait were on separate YAML lines, each command
+        # would run in its own shell -- the shell that backgrounded node would
+        # exit immediately, the kernel would SIGHUP the child, and the wait loop
+        # in the next shell would poll a dead process. We redirect node output
+        # to /tmp/app.log so we can dump it if startup fails or never reaches
+        # /health.
         - |
+          node dist/index.js > /tmp/app.log 2>&1 &
+          APP_PID=$!
+          echo "--- App started (PID $APP_PID); waiting for /health..."
           for i in $(seq 1 30); do
             STATUS=$(wget -qO- http://localhost:3000/health 2>/dev/null | grep -o '"status":"ok"' || true)
             if [ -n "$STATUS" ]; then
               echo "--- App is healthy"
               break
             fi
+            # If the app process died, dump its log instead of waiting out the timer.
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              echo "--- App process exited unexpectedly. /tmp/app.log:"
+              tail -100 /tmp/app.log 2>/dev/null || echo "(no log captured)"
+              exit 1
+            fi
             echo "--- Waiting for app... attempt $i/30"
             sleep 2
           done
           if [ -z "$STATUS" ]; then
-            echo "--- App did not become healthy within 60s"
+            echo "--- App did not become healthy within 60s. /tmp/app.log:"
+            tail -100 /tmp/app.log 2>/dev/null || echo "(no log captured)"
             wget -qO- http://localhost:3000/health 2>/dev/null || true
             exit 1
           fi
