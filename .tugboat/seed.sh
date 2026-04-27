@@ -84,7 +84,7 @@ let db;
 try {
   db = new Database(process.env.SQLITE_PATH);
   db.prepare(
-    'INSERT OR IGNORE INTO organization (id, name, slug, \"createdAt\") VALUES (?, ?, ?, datetime(\"now\"))'
+    'INSERT OR IGNORE INTO organization (id, name, slug, created_at) VALUES (?, ?, ?, datetime(\'now\'))'
   ).run('${ORG_ID}', '${ORG_NAME}', '${ORG_SLUG}');
   console.log('  [OK] Organization ready');
 } catch (err) {
@@ -113,7 +113,7 @@ try {
     // Insert new project
     const now = new Date().toISOString();
     const result = db.prepare(
-      'INSERT INTO projects (name, slug, \"idPrefix\", settings, \"createdAt\", \"updatedAt\", organization_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO projects (name, slug, id_prefix, settings, created_at, updated_at, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run('${PROJECT_NAME}', '${PROJECT_SLUG}', '${PROJECT_PREFIX}', '{}', now, now, '${ORG_ID}');
     projectId = result.lastInsertRowid;
   }
