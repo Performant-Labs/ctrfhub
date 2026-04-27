@@ -125,6 +125,28 @@ Status key:
 
 ---
 
+### API-001 — Public REST read API
+**Depends on:** CTRF-002, AUTH-001
+**Skills required:** `fastify-route-convention.md`, `zod-schema-first.md`, `mikroorm-dual-dialect.md`, `vitest-three-layer-testing.md`
+**Test tiers required:** integration
+**Page verification tiers:** T1 Headless (all status codes; auth enforcement; pagination shape; org-scope guard — results never cross orgs)
+**Critical test paths:** project-scoped `x-api-token` grants read access to its own project only (not other projects in the same org); session cookie grants full org access; `GET /api/v1/projects/:slug/runs` returns paginated list with filters applied at SQL level; `GET /api/v1/runs/:id` returns test results paginated (default 100 per page, max 1000); `GET /api/v1/projects/:slug/stats` returns pass-rate/duration/flaky-count for the requested window (7/30/90 days); unknown project slug → 404; unauthenticated → 401; token scoped to different project → 403; **all endpoints are session-cookie auth OR `x-api-token` — no new auth mechanism required**; `HATEOAS`-light: every list response carries `total`, `page`, `limit`, `data[]`
+**Endpoints:**
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/projects` | List all projects for the authenticated org. Session auth only (no project-scoped token). Returns `[{ id, slug, name, description, createdAt }]`. |
+| `GET` | `/api/v1/projects/:slug` | Get a single project's details + token count + run count. Same auth as above. |
+| `GET` | `/api/v1/projects/:slug/runs` | Paginated, filterable run list. Query params: `status` (passed\|failed\|mixed), `branch`, `environment`, `from` (ISO date), `to` (ISO date), `page` (default 1), `limit` (default 20, max 100). Returns `{ total, page, limit, data: [RunSummary] }`. `RunSummary` = `{ id, runId, status, passRate, passed, failed, skipped, flaky, duration, startedAt, branch, environment }`. |
+| `GET` | `/api/v1/runs/:id` | Full run detail. Includes `testResults` array (paginated: `testsPage`, `testsLimit`, default 100 per page, max 1000). Each result: `{ id, name, status, duration, message, trace, aiCategory, aiCategoryOverride, suiteTitle }`. AI fields null when AI not configured. |
+| `GET` | `/api/v1/projects/:slug/stats` | Aggregated stats for a time window. Query param: `window` (7d\|30d\|90d, default 7d). Returns `{ totalRuns, passRate, avgDuration, failedCount, flakyCount, trend: [{ date, passRate, failedCount }] }`. Trend is one data point per day in the window. |
+
+**Auth model for project-scoped tokens:** an `x-api-token` that has `projectId=X` in `apikey.metadata` may call any endpoint whose path resolves to that same project; attempts to access a different project return 403. Session cookies get full org access.
+**Acceptance:** All five endpoints implemented in `src/modules/api/routes.ts` with service layer in `src/modules/api/service.ts`; Zod response schemas for all five shapes; org-scope guard — a project in org A is never visible to a token/session in org B; project-scoped token access respected (403 on cross-project); pagination with `total`/`page`/`limit` envelope; integration tests covering: valid session returns data, project-scoped token returns 403 on wrong project, unauthenticated returns 401, unknown slug returns 404, filter combinations produce correctly filtered SQL queries (not post-filtered); both Postgres and SQLite dialects covered.
+- [ ] API-001
+
+---
+
 ### CTRF-003 — Artifact co-upload with ingest
 **Depends on:** CTRF-002
 **Skills required:** `ctrf-ingest-validation.md`, `artifact-security-and-serving.md`, `vitest-three-layer-testing.md`
@@ -285,6 +307,39 @@ Status key:
 **Critical test paths:** autosave fires on blur (not every keystroke); "✓ Saved" confirmation renders after successful save; revoke-all-sessions kills all other sessions and retains current; personal API token shown plaintext once, last-4 thereafter; `user_profiles`, `user_notification_preferences`, `personal_api_tokens` tables created via schema-generator on both dialects (per INFRA-005); Slack DM notification column hidden until PL-009 ships
 **Acceptance:** `/settings/profile` (display name, avatar, timezone); `/settings/security` (change password, active sessions, revoke all); `/settings/notifications` (event toggles — Slack DM column hidden until PL-009); `/settings/api-keys` personal token create/revoke; `user_profiles`, `user_notification_preferences`, `personal_api_tokens` tables created via schema-generator on both dialects (per INFRA-005); autosave on blur with "✓ Saved" confirmation (E2E test: `settings-autosave.spec.ts`).
 - [ ] SET-003
+
+---
+
+### WHOOK-001 — Outbound webhook: generic signed HTTP POST (DD-018, MVP)
+**Depends on:** SET-001, CTRF-002
+**Skills required:** `fastify-route-convention.md`, `zod-schema-first.md`, `mikroorm-dual-dialect.md`, `vitest-three-layer-testing.md`
+**Test tiers required:** integration
+**Page verification tiers:** T1 Headless (webhook registration 201; delivery log endpoint returns last 5 entries; invalid URL returns 422; signature header present on outbound POST)
+**Critical test paths:** `run.failed` event triggers delivery within 5 seconds of ingest completing; outbound POST body is signed with `X-CTRFHub-Signature: sha256=<hmac>` using the project's webhook secret; failed delivery (non-2xx or timeout) is logged with status + response body (truncated to 1 KB) in `webhook_deliveries`; retry not in MVP (failed deliveries are logged, not retried — retry is Phase 2); at most 10 webhooks per project (returns 422 if exceeded); `project_webhooks` and `webhook_deliveries` tables created via schema-generator on both dialects; delivery log API returns last 5 per webhook; inline delivery log visible on `/projects/:id/integrations`
+**Endpoints:**
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/hx/projects/:slug/webhooks` | Register a webhook (URL + optional secret) |
+| `DELETE` | `/hx/projects/:slug/webhooks/:id` | Remove a webhook |
+| `GET` | `/hx/projects/:slug/webhooks/:id/deliveries` | Last 5 delivery log entries (HTMX partial) |
+
+**Payload shape** (matches DD-018, `"version": "1"`):
+```json
+{
+  "version": "1",
+  "event": "run.failed",
+  "projectSlug": "frontend-e2e",
+  "runId": "FE-042",
+  "status": "failed",
+  "passRate": 0.87,
+  "failedCount": 13,
+  "startedAt": "2026-04-27T14:00:00.000Z",
+  "url": "https://ctrfhub.example.com/runs/FE-042"
+}
+```
+**Acceptance:** `project_webhooks` table (url, secret_hash, payload_version, created_at) and `webhook_deliveries` table (webhook_id, event, status_code, response_body_preview, delivered_at) created via schema-generator on both dialects; webhook registration UI on `/projects/:id/integrations` tab; `run.failed` event fires delivery after ingest; HMAC-SHA256 signature on every outbound request (`X-CTRFHub-Signature` header); delivery failures logged (non-retried in MVP); inline last-5 delivery log per webhook; max 10 webhooks per project; integration tests: valid delivery fires + is logged, failed delivery (mock HTTP 500) logged without retry, signature validates, over-limit returns 422.
+- [ ] WHOOK-001
 
 ---
 

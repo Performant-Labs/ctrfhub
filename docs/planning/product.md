@@ -519,6 +519,22 @@ CTRFHub's HTTP API is the contract CI pipelines depend on. The rules are documen
 - **HTMX-only partial endpoints live under `/hx/*`, not `/api/v1/*`.** They are internal to the server-rendered dashboard and can change freely between releases. Callers that think they need to hit `/hx/*` programmatically should ask for an `/api/v1/*` equivalent instead; a `/hx/*` response without the `HX-Request: true` header may return `400`.
 - **OpenAPI spec** is deferred to PL-015. Minor risk of accidental breaks slipping past code review until then — acceptable at MVP scale with zero external users.
 
+**Complete `/api/v1/` surface (Community MVP):**
+
+| Method | Endpoint | Auth | Story |
+|---|---|---|---|
+| `POST` | `/api/v1/projects/:slug/runs` | `x-api-token` (project-scoped) | CTRF-002 ✅ |
+| `GET` | `/api/v1/projects` | session or `x-api-token` (org-level read) | API-001 |
+| `GET` | `/api/v1/projects/:slug` | session or `x-api-token` | API-001 |
+| `GET` | `/api/v1/projects/:slug/runs` | session or `x-api-token` (project-scoped) | API-001 |
+| `GET` | `/api/v1/projects/:slug/stats` | session or `x-api-token` (project-scoped) | API-001 |
+| `GET` | `/api/v1/runs/:id` | session or `x-api-token` (project-scoped) | API-001 |
+| `GET` | `/api/v1/runs/:id/export.json` | session or `x-api-token` | DATA-001 |
+| `GET` | `/api/v1/runs/:id/export.zip` | session or `x-api-token` | DATA-001 |
+| `GET` | `/api/v1/search` | session | SRCH-001 |
+| `DELETE` | `/api/v1/projects/:slug` | session (admin) | SET-001 |
+| `DELETE` | `/api/v1/runs/:id` | session (admin) | DATA-001 |
+
 ---
 
 ## Success Criteria

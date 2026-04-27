@@ -1,6 +1,32 @@
 # CTRFHub — Parking Lot
 
-Deferred decisions and infrastructure tasks that are not blockers for MVP scaffolding but must be resolved before production release or at the specified milestone.
+Deferred decisions and infrastructure tasks tracked here until they meet their promotion criteria. Each entry carries the full design so that promoting an item is a *build*, not a redesign.
+
+## Status overview
+
+| # | Title | Milestone | Status |
+|---|---|---|---|
+| PL-001 | Docker Compose proxy config (Caddy/Nginx) | Pre-launch | 🔴 Open |
+| PL-002 | EventBus in-memory + Redis upgrade path | Scaffolding | ✅ Resolved — INFRA-004 |
+| PL-003 | Large CTRF ingest payloads / BullMQ | MVP limit done; queue deferred | 🟡 MVP portion resolved — CTRF-002 |
+| PL-004 | Gaffer dialog design pattern | UI implementation | 🔴 Open — applies to SET-001+ |
+| PL-005 | Streaming ingest mode | Post-MVP / Business | 🟢 Deferred |
+| PL-006 | Data retention nightly cron | MVP | ✅ Promoted → DATA-001 |
+| PL-007 | Full Report human-readable view | MVP | ✅ Promoted → DASH-003 |
+| PL-008 | System Status daily snapshots | Post-MVP | 🟢 Deferred |
+| PL-009 | Rich integrations (Slack/Teams/etc.) | Phase 2 / Business | 🟡 MVP generic webhook → WHOOK-001; Phase 2 adapters deferred |
+| PL-010 | Two-factor authentication | Phase 2 / Business | 🟢 Deferred |
+| PL-011 | Invitation token lifecycle | Phase 2 / Business | 🟢 Deferred |
+| PL-012 | CLI bulk export | Phase 2 / Business | 🟢 Deferred |
+| PL-013 | Orphaned-artifact reconciliation sweeper | Phase 2 | 🟢 Deferred |
+| PL-014 | Observability platform | Phase 2 sub-items | 🟢 Deferred |
+| PL-015 | Machine-readable OpenAPI spec | Phase 2 / Business | 🟡 API-001 now provides the surface to describe |
+| PL-016 | Bespoke `ctrfhub backup` / `restore` CLI | Phase 2 / Business | 🟢 Deferred |
+| PL-017 | Malware scanning (ClamAV sidecar) | Business | 🟢 Deferred |
+| PL-018 | HTML sanitisation (DOMPurify) | Post-MVP | 🟢 Deferred |
+| PL-019 | Mobile-degraded-functional viewport | Post-MVP | 🟢 Deferred |
+| PL-020 | Write API for project & token management (IaC) | Phase 2 | 🟢 Deferred |
+| PL-021 | Rate-limit response headers (`X-RateLimit-*`) | Phase 2 | 🟢 Deferred |
 
 ---
 
@@ -28,27 +54,7 @@ DD-012 states that a reverse proxy is **required** for all production deployment
 
 **Source:** DD-011
 **Milestone:** Scaffolding (first implementation task)
-
-The `EventBus` interface defined in DD-011 is the first concrete TypeScript interface for the codebase. The in-memory implementation is needed for MVP; the Redis Pub/Sub upgrade path needs to be documented so that horizontal scaling doesn't require rearchitecting.
-
-**What needs to be created:**
-
-- `src/lib/event-bus/types.ts` — the `EventBus` interface
-- `src/lib/event-bus/memory-event-bus.ts` — in-memory EventEmitter implementation (MVP)
-- `src/lib/event-bus/redis-event-bus.ts` — Redis Pub/Sub implementation (stub with TODO, or full implementation)
-- `src/lib/event-bus/index.ts` — factory that selects implementation based on `EVENT_BUS` env var (`memory` | `redis`)
-
-**Interface (from DD-011):**
-
-```typescript
-export interface EventBus {
-  publish(channel: string, event: string, data: object): Promise<void>;
-  subscribe(channel: string, handler: (event: string, data: object) => void): void;
-  unsubscribe(channel: string, handler: (event: string, data: object) => void): void;
-}
-```
-
-**Decision needed:** Should `redis-event-bus.ts` be a full implementation at scaffolding time, or a documented stub? Recommendation: **full implementation** — adding it later when the codebase is larger is significantly more disruptive. `ioredis` is the client library.
+**Status: ✅ Resolved** — `EventBus` interface, `MemoryEventBus`, and `RedisEventBus` (stub) implemented as part of INFRA-004. Factory selects implementation via `EVENT_BUS` env var. `MemoryEventBus` test double in `src/__tests__/doubles/`. Redis upgrade path documented in `deployment-architecture.md`.
 
 ---
 
@@ -150,6 +156,7 @@ Streaming aggregation is a meaningfully different product feature — closer to 
 
 **Source:** Storage growth analysis; `storage-growth-reference.md`
 **Milestone:** MVP — must ship before first public release
+**Status: ✅ Promoted → DATA-001** — design decisions frozen in this entry served as the brief. Implementation tracked in `tasks.md §DATA-001`.
 
 ### Why it's required
 
@@ -192,6 +199,7 @@ Both paths respect the `RETENTION_CRON_SCHEDULE` env var (default: `0 2 * * *`, 
 
 **Source:** Gaffer gap observed in production (2026-04-22)
 **Milestone:** MVP — core differentiator, must ship at launch
+**Status: ✅ Promoted → DASH-003** — design decisions frozen in this entry served as the brief. Implementation tracked in `tasks.md §DASH-003`.
 
 ### The gap
 
@@ -271,8 +279,9 @@ WHERE snapshot_at > NOW() - INTERVAL '30 days'
 
 **Source:** DD-018 (ships a generic signed HTTP webhook as the only MVP integration)
 **Milestone:** Phase 2 (Slack native, Teams, Discord, email digest); Business Edition (PagerDuty, ChatOps, conditional rules, @mention routing)
+**Status: 🟡 Partially scoped** — the MVP generic webhook (one event: `run.failed`, signed HTTP POST per project) is **no longer tracked here**. It has been promoted to `tasks.md §WHOOK-001`. This entry covers only the **Phase 2 / Business Edition** native adapter layer on top of that foundation.
 
-### Why it's deferred
+### Why the native adapters are deferred
 
 MVP ships a generic signed HTTP webhook per project with exactly one event (`run.failed`). That covers every integration need at v1 — users route the webhook to Slack via an incoming-webhook URL, to Teams via a connector URL, to PagerDuty via its Events API, to email via a transformer, to anything else via Zapier or a small serverless function. Native per-vendor adapters are polish: they add nicer formatting (Slack Block Kit, Teams Adaptive Cards) and direct OAuth app installation, but they don't unlock new capability. Shipping them in v1 would mean maintaining four vendor SDKs before we know which ones users actually care about.
 
@@ -809,6 +818,8 @@ MVP accepts the risk surface that:
 
 Promotion is a build, not a redesign — the spec shape is derived from Zod schemas that are already the source of request/response validation.
 
+> **2026-04-27 update:** `API-001` is now in the MVP task backlog and defines 5 read endpoints (`GET /api/v1/projects`, `/api/v1/projects/:slug`, `/api/v1/projects/:slug/runs`, `/api/v1/projects/:slug/stats`, `/api/v1/runs/:id`) plus the existing ingest endpoint from CTRF-002. Once API-001 ships, `@fastify/swagger` can derive an OpenAPI 3.1 document from the existing Zod schemas in under a day. This significantly lowers the effort bar for PL-015 — **the first promotion trigger that fires after API-001 lands should be acted on immediately.**
+
 ---
 
 ## PL-016 — Bespoke `ctrfhub backup` / `ctrfhub restore` CLI
@@ -998,4 +1009,73 @@ Zero. PL-019 is UI-only.
 
 ---
 
-*Last updated: 2026-04-23*
+## PL-020 — Write API for project and token management (IaC / automation path)
+
+**Source:** Gap identified 2026-04-27 during public API review
+**Milestone:** Phase 2 — first operator ask for IaC-driven provisioning
+
+### Why it's deferred
+
+`API-001` (MVP) gives CI pipelines and dashboards full read access to runs and stats. What it does not provide is a way to *create* projects, *rotate* tokens, or *register* webhooks programmatically. In MVP, all of that is done through the web UI (setup wizard and project settings). That is acceptable at MVP scale — operators are human and set things up once.
+
+The population that needs a write API is operators running multiple CTRFHub instances via Terraform, Ansible, or shell-based bootstrap scripts who want "declare project X exists with these tokens" without clicking through a browser. That population doesn't exist yet.
+
+### Endpoints needed when promoted
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/projects` | Create a project |
+| `PATCH` | `/api/v1/projects/:slug` | Rename / update project settings |
+| `POST` | `/api/v1/projects/:slug/tokens` | Create a project-scoped API token |
+| `DELETE` | `/api/v1/projects/:slug/tokens/:id` | Revoke a token |
+| `POST` | `/api/v1/projects/:slug/webhooks` | Register an outbound webhook |
+| `DELETE` | `/api/v1/projects/:slug/webhooks/:id` | Remove a webhook |
+
+**Auth:** session with Admin role only — no token-on-token creation via API key (prevents privilege escalation).
+
+### Frozen decisions
+
+- Response shapes must be consistent with the `API-001` read shapes (same `Project`, `Token`, `Webhook` objects).
+- Token creation returns the raw token exactly once (same as the UI flow).
+- All write endpoints are session-auth only; `x-api-token` grants read access only, never write access.
+- Rate limited to 60 write operations/hour per session (prevents runaway IaC scripts).
+
+### Success criteria for moving this out of the parking lot
+
+Any one of:
+- First operator opens a GitHub issue asking "can I create projects via API / Terraform?"
+- A `ctrfhub` Terraform provider is proposed by the community.
+- Business Edition sales conversation where the prospect runs CTRFHub at scale and needs automated project provisioning.
+
+---
+
+## PL-021 — Rate-limit response headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`)
+
+**Source:** Gap identified 2026-04-27 during public API review
+**Milestone:** Phase 2 — first 429 complaint from an API consumer
+
+### Why it's deferred
+
+CTRFHub currently returns `429 Too Many Requests` when a rate limit is breached (canonical shape in DD-029). What it does not return is advance warning: the `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers that let well-behaved callers self-throttle *before* hitting 429.
+
+`@fastify/rate-limit` supports these headers via its `addHeaders` option — this is effectively a one-line config change plus a handful of integration tests. It is deferred not because it's hard but because the risk of MVP-scale callers being surprised by 429 without headers is low: the ingest limit is 120/hour per token, which is generous for any real CI pipeline.
+
+### What to build when promoted
+
+- Enable `addHeaders: true` in the `@fastify/rate-limit` config. This emits `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` (Unix timestamp) on every response that passes through a rate-limited route.
+- Add `Retry-After` header on 429 responses (seconds until reset). `@fastify/rate-limit` emits this automatically when `addRetryAfter: true` is set.
+- Update integration tests to assert headers are present on successful responses and that `Retry-After` is present on 429s.
+- Document the headers in the API reference (once PL-015 OpenAPI promotes, they appear automatically in the spec).
+
+### Success criteria for moving this out of the parking lot
+
+Any one of:
+- First CI pipeline reports unexpected 429s with no advance indication.
+- First third-party reporter integration (e.g. a community `ctrfhub` GitHub Action) asks how to inspect remaining quota.
+- PL-015 (OpenAPI) promotes — the spec tooling will expect standard rate-limit headers and flag their absence.
+
+Promotion is a one-line config change + tests. Do it at the same time as any other `@fastify/rate-limit` config touch to avoid a dedicated story.
+
+---
+
+*Last updated: 2026-04-27*
