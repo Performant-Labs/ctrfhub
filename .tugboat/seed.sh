@@ -33,6 +33,12 @@ BASE_URL="http://localhost:3000"
 ADMIN_EMAIL="${TUGBOAT_ADMIN_EMAIL:?TUGBOAT_ADMIN_EMAIL must be set in Tugboat Repository Settings}"
 ADMIN_PASSWORD="${TUGBOAT_ADMIN_PASSWORD:?TUGBOAT_ADMIN_PASSWORD must be set in Tugboat Repository Settings}"
 SQLITE_DB="${SQLITE_PATH:?SQLITE_PATH must be set (config.yml sets this)}"
+# Better Auth requires an Origin header that matches its configured
+# BETTER_AUTH_URL (or one of the trustedOrigins). Without it, requests to
+# the apikey plugin and other guarded endpoints get rejected with
+# MISSING_OR_NULL_ORIGIN. We export BETTER_AUTH_URL=$TUGBOAT_DEFAULT_SERVICE_URL
+# in the update stage; reuse the same value here so the Origin matches.
+ORIGIN="${TUGBOAT_DEFAULT_SERVICE_URL:-http://localhost:3000}"
 COOKIE_JAR="/tmp/ctrfhub-seed-cookies"
 ORG_ID="preview-org"
 ORG_NAME="Preview Org"
@@ -52,6 +58,7 @@ echo ">> Step 1: Creating admin user (${ADMIN_EMAIL})..."
 SIGNUP_STATUS=$(curl -s -o /tmp/ctrfhub-signup-response.json -w "%{http_code}" \
   -X POST "${BASE_URL}/api/auth/sign-up/email" \
   -H "content-type: application/json" \
+  -H "Origin: ${ORIGIN}" \
   -c "${COOKIE_JAR}" \
   -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\",\"name\":\"Preview Admin\"}")
 
@@ -62,6 +69,7 @@ else
   LOGIN_STATUS=$(curl -s -o /tmp/ctrfhub-login-response.json -w "%{http_code}" \
     -X POST "${BASE_URL}/api/auth/sign-in/email" \
     -H "content-type: application/json" \
+    -H "Origin: ${ORIGIN}" \
     -c "${COOKIE_JAR}" \
     -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"}")
 
@@ -140,6 +148,7 @@ echo ">> Step 4: Creating API key for project ${PROJECT_SLUG} (id=${PROJECT_ID})
 APIKEY_RESPONSE=$(curl -s -o /tmp/ctrfhub-apikey-response.json -w "%{http_code}" \
   -X POST "${BASE_URL}/api/auth/api-key/create" \
   -H "content-type: application/json" \
+  -H "Origin: ${ORIGIN}" \
   -b "${COOKIE_JAR}" \
   -d "{\"name\":\"preview-ci\",\"metadata\":{\"projectId\":\"${PROJECT_ID}\"}}")
 
