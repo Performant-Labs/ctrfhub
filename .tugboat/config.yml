@@ -10,10 +10,17 @@
 # Service:
 #   app -- Node.js application with on-disk SQLite at /tmp/ctrfhub-preview.sqlite
 #
-# Build stages:
+# Build stages (per Tugboat docs https://docs.tugboatqa.com/setting-up-services/how-to-set-up-services/leverage-service-commands/):
 #   init   -- install OS packages and npm dependencies (cached across rebuilds)
-#   update -- compile TypeScript + Tailwind CSS (re-runs on refresh)
-#   build  -- start the app, run seed script, verify health
+#   update -- compile TypeScript + Tailwind CSS, start node so build can seed
+#   build  -- run seed script + final health check
+#   start  -- (re)launch node every time the container starts. Tugboat STOPS
+#             services after build to take a snapshot, then runs `start` on
+#             every subsequent container start: post-snapshot, after wake from
+#             suspend, after manual Stop/Start, after Reset. Without `start`,
+#             the woken container has no node bound to :3000 and the URL
+#             returns Tugboat's "Preview Not Found" splash.
+#             https://docs.tugboatqa.com/setting-up-services/how-to-set-up-services/running-a-background-process/#use-the-start-command
 #
 # Environment variables (set in Tugboat's Repository Settings, NOT here):
 #   TUGBOAT_ADMIN_EMAIL    -- admin user email for the preview
@@ -72,12 +79,14 @@ services:
         # Compile TypeScript --- dist/ and build Tailwind CSS --- dist/assets/
         - npm run build
         # Start the app in the background AND wait for /health in a single shell
-        # block. If the start-and-wait were on separate YAML lines, each command
-        # would run in its own shell -- the shell that backgrounded node would
-        # exit immediately, the kernel would SIGHUP the child, and the wait loop
-        # in the next shell would poll a dead process. We redirect node output
-        # to /tmp/app.log so we can dump it if startup fails or never reaches
-        # /health.
+        # block. We need node alive during `update` -> `build` so seed.sh can
+        # POST signup/api-key requests against it. After `build`, Tugboat will
+        # stop the services to take a snapshot -- that's intentional Tugboat
+        # behavior, and the `start` stage further down is what re-launches node
+        # on every subsequent container start (snapshot restore + suspend wake).
+        # https://docs.tugboatqa.com/setting-up-services/how-to-set-up-services/running-a-background-process/
+        # We redirect node output to /tmp/app.log so we can dump it if startup
+        # fails or never reaches /health.
         - |
           # Tugboat sets TUGBOAT_DEFAULT_SERVICE_URL in the container's runtime
           # env. Bash expands it here (YAML's ${...} only interpolates
@@ -115,3 +124,44 @@ services:
         - bash "${TUGBOAT_ROOT}/.tugboat/seed.sh"
         # Final health verification
         - wget -qO- http://localhost:3000/health
+
+      # ------ start: re-launch node on every container start ------
+      #
+      # Per Tugboat docs, after `build` completes Tugboat stops the services
+      # to take a snapshot. The `start` stage is the documented hook to
+      # re-launch a long-running process on every subsequent container start
+      # (initial post-snapshot resume, every wake from idle suspend, every
+      # manual Stop/Start, every Reset).
+      #
+      # Pattern: plain `node ... &`. The Tugboat docs explicitly use this
+      # idiom -- no nohup/setsid/disown is needed; Tugboat's runtime manages
+      # the backgrounded process correctly. Source:
+      # https://docs.tugboatqa.com/setting-up-services/how-to-set-up-services/running-a-background-process/#use-the-start-command
+      #
+      # The wait-for-/health loop ensures this stage doesn't return success
+      # until node is actually listening on :3000, so the very first request
+      # after a wake doesn't see a transient connection refused / 502.
+      start:
+        - |
+          export BETTER_AUTH_URL="$TUGBOAT_DEFAULT_SERVICE_URL"
+          export PUBLIC_URL="$TUGBOAT_DEFAULT_SERVICE_URL"
+          node dist/index.js > /tmp/app.log 2>&1 &
+          APP_PID=$!
+          echo "--- App (re)started by start stage (PID $APP_PID); waiting for /health..."
+          for i in $(seq 1 30); do
+            STATUS=$(wget -qO- http://localhost:3000/health 2>/dev/null | grep -o '"status":"ok"' || true)
+            if [ -n "$STATUS" ]; then
+              echo "--- App healthy"
+              exit 0
+            fi
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              echo "--- App process died. /tmp/app.log:"
+              tail -100 /tmp/app.log 2>/dev/null || echo "(no log)"
+              exit 1
+            fi
+            echo "--- Waiting for app... attempt $i/30"
+            sleep 2
+          done
+          echo "--- App did not become healthy within 60s on container start. /tmp/app.log:"
+          tail -100 /tmp/app.log 2>/dev/null || echo "(no log)"
+          exit 1
