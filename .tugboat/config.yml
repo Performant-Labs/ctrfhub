@@ -44,9 +44,11 @@ services:
       # selects PG when DATABASE_URL is set, SQLite otherwise).
       SQLITE_PATH: /tmp/ctrfhub-preview.sqlite
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
-      BETTER_AUTH_URL: ${TUGBOAT_DEFAULT_SERVICE_URL}
       SESSION_SECRET: ${SESSION_SECRET}
-      PUBLIC_URL: ${TUGBOAT_DEFAULT_SERVICE_URL}
+      # BETTER_AUTH_URL and PUBLIC_URL are derived from TUGBOAT_DEFAULT_SERVICE_URL
+      # (a Tugboat runtime built-in, not a Repository-Settings env var). Tugboat's
+      # YAML interpolation only handles repo-settings refs here, so these are
+      # exported in the update-stage shell command (below) instead.
       PORT: "3000"
       NODE_ENV: production
       LOG_LEVEL: info
@@ -77,6 +79,11 @@ services:
         # to /tmp/app.log so we can dump it if startup fails or never reaches
         # /health.
         - |
+          # Tugboat sets TUGBOAT_DEFAULT_SERVICE_URL in the container's runtime
+          # env. Bash expands it here (YAML's ${...} only interpolates
+          # Repository-Settings env vars, not Tugboat runtime built-ins).
+          export BETTER_AUTH_URL="$TUGBOAT_DEFAULT_SERVICE_URL"
+          export PUBLIC_URL="$TUGBOAT_DEFAULT_SERVICE_URL"
           node dist/index.js > /tmp/app.log 2>&1 &
           APP_PID=$!
           echo "--- App started (PID $APP_PID); waiting for /health..."
