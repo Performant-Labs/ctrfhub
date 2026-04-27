@@ -36,7 +36,7 @@ services:
   # app -- CTRFHub Node.js application (SQLite-backed for free-tier compatibility)
   # ---------------------------------------------------------------------------
   app:
-    image: node:22-alpine
+    image: tugboatqa/node:22
     default: true
     expose: "3000"
     environment:
@@ -55,7 +55,9 @@ services:
       # ------ init: system packages + npm install (cached, skipped on refresh) ------
       init:
         # Native build toolchain for better-sqlite3 compilation + wget for healthchecks
-        - apk add --no-cache python3 make g++ wget
+        # tugboatqa/node:22 is debian-based; use apt-get instead of apk.
+        - apt-get update
+        - apt-get install -y --no-install-recommends python3 make g++ wget
         # Install all dependencies (including devDeps needed for tsc + tailwind build)
         - npm ci
 
