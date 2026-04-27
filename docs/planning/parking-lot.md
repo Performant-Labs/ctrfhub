@@ -998,4 +998,58 @@ Zero. PL-019 is UI-only.
 
 ---
 
-*Last updated: 2026-04-23*
+## PL-020 — Coolify migration path when Tugboat free tier becomes the bottleneck
+
+CTRFHub's per-PR preview infrastructure currently runs on Tugboat free tier (`.tugboat/config.yml`, see also CI-003). The free tier ships with a hard cap of **5 GB total storage per project**, **512 MB RAM**, and **0.5 CPU**. Empirically, a CTRFHub preview occupies ~1.4 GB on disk (Node + node_modules + SQLite + Tugboat overhead), which means **3 simultaneous previews** is the realistic ceiling — typically 1 main + 2 PRs in flight.
+
+The constraint is binding for the foreseeable team size (André + Daedalus + Talos + occasional Argos PRs), but it has a clear failure mode: a 4th open PR triggers a build that either fails with a quota error or evicts something useful. Once the team grows past three concurrent contributors, or once individual PRs start carrying their own preview-required scope, this becomes a daily annoyance.
+
+The migration target is **Coolify on André's existing self-hosted server**. Coolify is an open-source Heroku-style PaaS with first-party GitHub PR preview deployments (see [docs](https://coolify.io/docs/applications/ci-cd/github/preview-deploy)). André already runs a Coolify instance with headroom on a larger box, so the migration is a configuration exercise, not a hosting-procurement exercise.
+
+### Why this is deferred (not promoted)
+
+Tugboat works for today's team. We just shipped the `start` stage fix (PR #58) and validated the wake cycle end-to-end; the dog-food loop is live. Migrating to Coolify now would burn engineering hours to solve a problem we don't currently have. The right time to spend that time is when the 3-preview ceiling actually starts rejecting builds, not before.
+
+### The path when this promotes
+
+(1) **Spike: stand up CTRFHub on Coolify alongside Tugboat.** No CI changes yet. Validate that a `.coolify` config (or whatever the equivalent ends up being) reproduces the per-PR preview behaviour: branch push → preview URL → seed runs → API key extracted. Estimated: half a day.
+
+(2) **Wire CI's smoke-test path to point at Coolify.** Replace `CTRFHUB_PREVIEW_URL` and `CTRFHUB_PREVIEW_API_KEY` (currently extracted from Tugboat's `main` preview) with the Coolify equivalents. Both must coexist briefly so a regression in Coolify doesn't break CI mid-cutover. Estimated: half a day.
+
+(3) **Cut over the human-review surface.** PR comments link to Coolify URLs instead of Tugboat URLs. Tugboat's per-PR previews can wind down. Tugboat's main preview can stay alive as a fallback for a sprint, then retire.
+
+(4) **Retire `.tugboat/config.yml`.** Replace the file with a `docs/ai_guidance/skills/`-style note pointing at the Coolify config so future readers understand the history. Don't delete outright — the lessons in the inline comments (`update` vs `start` stage, snapshot semantics, free-tier RAM math) are useful regardless of the platform.
+
+### Configurable concurrency cap
+
+Coolify currently has **no built-in cap** on concurrent preview deployments per app ([coollabsio/coolify#9064](https://github.com/coollabsio/coolify/issues/9064)). On a busy day with many PRs open, this could exhaust the host. The promotion work should include an operational cap — either via Coolify config (when the upstream feature ships), via a queueing wrapper, or via a github-actions gate that closes the lowest-priority preview when concurrency exceeds N.
+
+### Auto-trigger reliability
+
+[coollabsio/coolify#9271](https://github.com/coollabsio/coolify/issues/9271) flagged auto-trigger reliability bugs on PR open. Verify this is fixed in whatever Coolify version André runs before promoting; if not, fall back to manual `/preview` slash-command triggering until it stabilises.
+
+### Public-repo security posture
+
+CTRFHub's repo is **public** ([Performant-Labs/ctrfhub](https://github.com/Performant-Labs/ctrfhub)). [Coolify Discussion #3046](https://github.com/coollabsio/coolify/discussions/3046) flags that auto-deploying public-repo PRs is a known security risk — preview environments execute attacker-controlled code on the host. Coolify supports trigger-control filters (members / collaborators / contributors only). The promotion work must include configuring this filter so unsolicited PRs from drive-by contributors don't land arbitrary container code on the box. Tugboat has the same risk class but charges per project, which provides natural isolation; Coolify-on-shared-host needs the explicit filter.
+
+### Success criteria for promotion (any one)
+
+(1) **Storage-cap rejection observed.** A 4th simultaneous PR triggers a Tugboat quota error in CI. One occurrence is enough — the latency of "wait for someone to merge" was the point of having previews.
+
+(2) **Sustained ≥ 4 contributors with overlapping PRs.** Once the team scaling past three (the math: André + Daed + Talos + N) makes 3-preview-cap hits a recurring pattern, not an occasional one.
+
+(3) **Coolify becomes load-bearing for another project on the same box.** If André starts using his Coolify instance for a non-CTRFHub project and the operational rhythm becomes routine, the marginal cost of adding CTRFHub drops. Migration becomes "one more app on a box you already maintain" rather than "a new platform to learn."
+
+### Non-goals when this promotes
+
+- **Migrate away from Tugboat's *config patterns*.** The `init / update / build / start` stage shape is a clean mental model for any preview platform. The Coolify config should mirror it where the platform supports the same primitives, even if the YAML shape differs.
+- **Drop SQLite for previews and use full Postgres.** The free-tier RAM constraint that forced SQLite was Tugboat-specific. Coolify-on-larger-box could afford a PG container per preview, but that's a separate decision (worth its own PL entry if/when it surfaces) — switching the dialect of preview previews while *also* moving platforms is a recipe for not knowing which change broke what.
+- **Self-host the entire preview stack from scratch.** Coolify-on-existing-server is the path. Building a bespoke per-PR builder on raw Docker Compose is over-investment relative to what Coolify already provides.
+
+### Schema impact when promoted
+
+Zero. PL-020 is preview-infrastructure-only.
+
+---
+
+*Last updated: 2026-04-27*
