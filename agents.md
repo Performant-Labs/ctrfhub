@@ -13,7 +13,7 @@ If you're a fresh Claude session loading this file because something told you to
 | Role | Per-role file (canonical) | Writes | Never writes | Real-world handle (per `CLAUDE.md`) |
 |---|---|---|---|---|
 | **Orchestrator** | `.antigravity/agents/orchestrator.md` | `.argos/<taskId>/*.md` (briefs, audits, PR bodies); status-flip commits to `tasks.md` (`chore(<taskId>): assign` / `complete`) | `src/`, tests, planning docs | **Argos** |
-| **Feature-implementer** | `.antigravity/agents/feature-implementer.md` | `src/`, `src/views/`, `src/migrations/`, `src/client/`, configuration | Anything under `src/__tests__/` or `e2e/tests/` | **Daedalus** (Mac), **Talos** (VM) |
+| **Feature-implementer** | `.antigravity/agents/feature-implementer.md` | `src/`, `src/views/`, `src/migrations/`, `src/client/`, configuration | Anything under `src/__tests__/` or `e2e/tests/` (except via a chore-task brief — see "Chore-task tracking" below) | **Daedalus** (Mac, Opus 4.6), **Talos** (VM, Opus 4.6), **Hephaestus** (Mac local, Qwen3.6-27B; chore-scope tasks only — see Hephaestus paragraph below) |
 | **Test-writer** | `.antigravity/agents/test-writer.md` | `src/__tests__/`, `e2e/tests/` | App code (`src/`), templates, migrations | Currently played by Daedalus or Talos in a follow-up session after feature work |
 | **Spec-enforcer** | `.antigravity/agents/spec-enforcer.md` | `.argos/<taskId>/spec-audit.md` only (read-only audit otherwise) | Any source file, any test file, any planning doc | Argos in audit mode; PR-Agent in CI |
 
@@ -42,6 +42,7 @@ CTRFHub uses a **manual human-gated relay** between agent sessions. There is no 
 - **Argos (Orchestrator)** lives in a single Cowork session. Argos reads the codebase, decomposes stories, writes briefs to `.argos/<taskId>/brief.md`, and runs spec-audits.
 - **Daedalus (Feature-implementer / Test-writer on bare-metal Mac)** lives in an AntiGravity instance at `~/Projects/ctrfhub`.
 - **Talos (Feature-implementer / Test-writer in macOS VM)** lives in an AntiGravity instance in a macOS virtual machine. Same role as Daedalus; the VM exists so two stories can run in parallel without sharing a working tree (the working-tree collision class — see `CLAUDE.md` "Agent names" for the precipitating event).
+- **Hephaestus (chore-task implementer, local Qwen3.6-27B on M1 Max)** lives in a Continue.dev session driving a local `mlx_lm.server` instance. Plays a narrowed feature-implementer role — single-file mechanical refactors (lint cleanups, type tightening, doc fixes), not full feature stories. Hephaestus's `.continueignore` blocks `agents.md`, `CLAUDE.md`, `.antigravity/agents/`, and `.argos/` to prevent context pollution from Claude-specific documents that don't apply to a smaller local model; he reads only the brief contents pasted into Continue.dev chat plus the source files in scope. Operational constraint: **cannot run in parallel** with Daedalus or Talos sessions on the same physical Mac (32 GB unified RAM ceiling). André must close the parallel AntiGravity / VM session before starting Heph, then restart it afterwards.
 
 For each story:
 
@@ -85,6 +86,14 @@ Once the story PR squash-merges, the briefs/handoffs are part of main's history.
 | `package.json` (deps), CI workflow files | — | ✓ if needed for the story | — | — |
 
 When in doubt, **escalate** rather than write. The boundaries exist so spec drift is caught early; routing around them defeats the multi-agent design.
+
+### Chore-task tracking — exception to file-path boundaries
+
+The table above is enforced **per story** (any task with a story ID like `AI-002`, `CI-003`, `INFRA-005`). For **chore tasks** (briefs prefixed `CHORE-…`), scope is bounded by the brief's "Files in scope" / "Non-goals" sections, not by the file-path/role mapping. Rationale: chore tasks are by definition narrow, mechanical, and cross-cutting (a lint cleanup, a typo sweep, a type tightening). Forcing them through the story-shaped role split would create artificial three-agent handoffs for what should be a single-file change.
+
+A chore brief written by Argos that legitimately needs to touch a test file (e.g. `CHORE-LINT-001` removing `as any` casts in `health.test.ts`) doesn't violate the feature-implementer rule — it's not a feature-implementer task in the first place; it's a chore task whose scope happens to land in test files.
+
+The discipline that replaces the file-path table for chore work is the brief itself: explicit "Files in scope," explicit "Non-goals," explicit acceptance criteria. If a chore brief tries to expand scope past those, the implementer escalates back to Argos rather than guessing. **Hephaestus (chore-only)** is the most common chore-task implementer; Daedalus and Talos can also run chores when bigger story work is paused.
 
 ---
 
