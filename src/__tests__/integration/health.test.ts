@@ -11,6 +11,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../app.js';
+import '../../types/fastify-augment.js';
 
 // ---------------------------------------------------------------------------
 // Test suite — buildApp() smoke test
@@ -33,20 +34,20 @@ describe('buildApp({ testing: true, db: ":memory:" })', () => {
   });
 
   it('decorates the app with getBootState', () => {
-    expect(typeof (app as any).getBootState).toBe('function');
+    expect(typeof app.getBootState).toBe('function');
   });
 
   it('decorates the app with setBootState', () => {
-    expect(typeof (app as any).setBootState).toBe('function');
+    expect(typeof app.setBootState).toBe('function');
   });
 
   it('boot state is "ready" after buildApp resolves', () => {
-    expect((app as any).getBootState()).toBe('ready');
+    expect(app.getBootState()).toBe('ready');
   });
 
   it('decorates the app with orm', () => {
-    expect((app as any).orm).toBeDefined();
-    expect(typeof (app as any).orm.close).toBe('function');
+    expect(app.orm).toBeDefined();
+    expect(typeof app.orm.close).toBe('function');
   });
 });
 
@@ -213,13 +214,13 @@ describe('GET /health — 503 readiness paths', () => {
   });
 
   it('returns 503 when bootState is "booting"', async () => {
-    (app as any).setBootState('booting');
+    app.setBootState('booting');
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(503);
   });
 
   it('returns correct body shape when bootState is "booting"', async () => {
-    (app as any).setBootState('booting');
+    app.setBootState('booting');
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(JSON.parse(res.body)).toEqual({
       status: 'booting',
@@ -229,13 +230,13 @@ describe('GET /health — 503 readiness paths', () => {
   });
 
   it('returns 503 when bootState is "migrating"', async () => {
-    (app as any).setBootState('migrating');
+    app.setBootState('migrating');
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(503);
   });
 
   it('returns correct body shape when bootState is "migrating"', async () => {
-    (app as any).setBootState('migrating');
+    app.setBootState('migrating');
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(JSON.parse(res.body)).toEqual({
       status: 'migrating',
@@ -248,23 +249,23 @@ describe('GET /health — 503 readiness paths', () => {
     // Per src/app.ts L379-386 the booting/migrating branch returns immediately
     // without touching the DB. Verifying via dbReady: false in the body —
     // a SELECT 1 succeeded path would have set dbReady: true.
-    (app as any).setBootState('booting');
+    app.setBootState('booting');
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(JSON.parse(res.body)).toMatchObject({ dbReady: false });
   });
 
   it('transitions 503 → 200 as bootState moves booting → migrating → ready', async () => {
-    (app as any).setBootState('booting');
+    app.setBootState('booting');
     const r1 = await app.inject({ method: 'GET', url: '/health' });
     expect(r1.statusCode).toBe(503);
     expect(JSON.parse(r1.body)).toMatchObject({ bootState: 'booting' });
 
-    (app as any).setBootState('migrating');
+    app.setBootState('migrating');
     const r2 = await app.inject({ method: 'GET', url: '/health' });
     expect(r2.statusCode).toBe(503);
     expect(JSON.parse(r2.body)).toMatchObject({ bootState: 'migrating' });
 
-    (app as any).setBootState('ready');
+    app.setBootState('ready');
     const r3 = await app.inject({ method: 'GET', url: '/health' });
     expect(r3.statusCode).toBe(200);
     expect(JSON.parse(r3.body)).toMatchObject({
@@ -340,7 +341,7 @@ describe('shutdown lifecycle', () => {
 
   it('ORM is closed during shutdown (decorated orm.close())', async () => {
     const app = await buildApp({ testing: true, db: ':memory:' });
-    const orm = (app as any).orm;
+    const orm = app.orm;
     expect(orm).toBeDefined();
 
     await app.close();
