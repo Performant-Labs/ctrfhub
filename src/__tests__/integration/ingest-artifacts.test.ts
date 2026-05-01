@@ -352,13 +352,10 @@ describe('CTRF-003 Artifact co-upload — happy path & validation', () => {
   });
 
   // ── 4. Per-file size limit (1 API key call) ────────────────────────────
-  // NOTE: @fastify/multipart's default fileSize limit (1 MB) preempts our
-  // custom per-type limits for any file > 1 MB. Either limit firing returns
-  // 413, but the response code string differs (`FST_REQ_FILE_TOO_LARGE` from
-  // Fastify vs `ARTIFACT_FILE_TOO_LARGE` from artifact-validation.ts).
-  // We assert only the status here; see test-handoff.md for the bug note.
+  // 12 MB image — over the 10 MB image ceiling but under the 200 MB plugin
+  // ceiling, so artifact-validation.ts governs.
   it('returns 413 when an image exceeds the per-file size limit', async () => {
-    const big = oversizedPng(11); // 11 MB — well over Fastify's 1 MB default
+    const big = oversizedPng(12); // 12 MB — over the 10 MB image ceiling
     const ctrf = makeCtrfWithAttachments([
       [{ name: 'big.png', contentType: 'image/png', path: 'big.png' }],
     ]);
@@ -368,6 +365,23 @@ describe('CTRF-003 Artifact co-upload — happy path & validation', () => {
     ]);
 
     expect(res.statusCode).toBe(413);
+    const body = JSON.parse(res.body);
+    expect(body.code).toBe('ARTIFACT_FILE_TOO_LARGE');
+  });
+
+  // ── 4b. Per-file size — under the per-type limit, over the old 1 MB default ─
+  it('accepts a valid PNG between 1 MB and the 10 MB image limit', async () => {
+    const png = oversizedPng(5); // 5 MB — over Fastify's old 1 MB default,
+                                  // under the 10 MB image ceiling.
+    const ctrf = makeCtrfWithAttachments([
+      [{ name: 'midsize.png', contentType: 'image/png', path: 'midsize.png' }],
+    ]);
+
+    const res = await injectMultipart(f, ctrf, [
+      { fieldName: 'midsize.png', fileName: 'midsize.png', contentType: 'image/png', data: png },
+    ]);
+
+    expect(res.statusCode).toBe(201);
   });
 
   // ── 5. External URL by-reference (1 API key call) ──────────────────────
@@ -449,7 +463,7 @@ describe('CTRF-003 Artifact co-upload — happy path & validation', () => {
     const artifacts = await em.find(TestArtifact, { testResult: results[0]!.id });
     expect(artifacts).toHaveLength(0);
   });
-  // Total: 8 API-key calls
+  // Total: 9 API-key calls
 });
 
 // ---------------------------------------------------------------------------
