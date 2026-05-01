@@ -53,6 +53,7 @@ import ingestPlugin from './modules/ingest/routes.js';
 import { MemoryEventBus, RunEvents } from './services/event-bus.js';
 import type { RunIngestedPayload } from './services/event-bus.js';
 import { createAiProvider } from './services/ai/index.js';
+import { LocalArtifactStorage } from './lib/local-artifact-storage.js';
 import { categorizeRun, recoverStalePipelineRows } from './services/ai/pipeline/index.js';
 
 // ---------------------------------------------------------------------------
@@ -320,10 +321,11 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     await eventBus.close();
   });
 
-  if (options.artifactStorage) {
-    app.decorate('artifactStorage', options.artifactStorage);
+  const artifactStorage = options.artifactStorage ?? (testing ? undefined : new LocalArtifactStorage());
+  if (artifactStorage) {
+    app.decorate('artifactStorage', artifactStorage);
     app.addHook('onClose', async () => {
-      await options.artifactStorage!.close();
+      await artifactStorage.close();
     });
   }
 
@@ -554,6 +556,13 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   await app.register(fastifyMultipart, {
     // Don't attach files to body — we iterate parts manually in the route
     attachFieldsToBody: false,
+    // Plugin-level ceiling sits at the highest per-type limit (zip = 200 MB).
+    // Per-type ceilings (image 10 MB / video 100 MB / zip 200 MB / log 5 MB)
+    // are enforced in src/lib/artifact-validation.ts after we classify the file.
+    // Without this, @fastify/multipart's default 1 MB cap preempts every check.
+    limits: {
+      fileSize: 200 * 1024 * 1024,
+    },
   });
 
   // -----------------------------------------------------------------------

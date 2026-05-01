@@ -51,6 +51,11 @@ export class MemoryArtifactStorage implements ArtifactStorage {
     return this.store.has(key);
   }
 
+  /** No-op close — required by `AppOptions.artifactStorage` shutdown hook. */
+  async close(): Promise<void> {
+    // nothing to release
+  }
+
   // ── Assertion helpers (test-only) ─────────────────────────────
 
   /** Number of artifacts currently stored. */

@@ -132,7 +132,7 @@ Status key:
 **Page verification tiers:** none (ingest endpoint, no page)
 **Critical test paths:** magic-bytes validation on every upload (rejects mismatched extension/content); per-file size limits enforced (images 10 MB, video 100 MB, zip 200 MB, logs 5 MB); per-run total enforced via `MAX_ARTIFACT_SIZE_PER_RUN`; external URL attachments stored by reference only (no file body accepted); `TestArtifact` entity row created per stored file; `ArtifactStorage` interface boundary respected (no direct filesystem calls in route)
 **Acceptance:** Multipart ingest accepts artifact file parts; magic-bytes validation on all uploads; per-file size limits enforced (images 10 MB, video 100 MB, zip 200 MB, logs 5 MB); per-run total enforced (`MAX_ARTIFACT_SIZE_PER_RUN`); external URL attachments stored by reference only (no file upload); `ArtifactStorage` interface used (local FS default, S3 optional); `TestArtifact` entity written; integration tests use `MemoryArtifactStorage`.
-- [ ] CTRF-003
+- [x] CTRF-003
 
 ---
 
