@@ -556,6 +556,13 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   await app.register(fastifyMultipart, {
     // Don't attach files to body — we iterate parts manually in the route
     attachFieldsToBody: false,
+    // Plugin-level ceiling sits at the highest per-type limit (zip = 200 MB).
+    // Per-type ceilings (image 10 MB / video 100 MB / zip 200 MB / log 5 MB)
+    // are enforced in src/lib/artifact-validation.ts after we classify the file.
+    // Without this, @fastify/multipart's default 1 MB cap preempts every check.
+    limits: {
+      fileSize: 200 * 1024 * 1024,
+    },
   });
 
   // -----------------------------------------------------------------------
