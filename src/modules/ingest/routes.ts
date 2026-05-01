@@ -2,8 +2,8 @@
  * Ingest module — `POST /api/v1/projects/:slug/runs` route.
  *
  * Accepts CTRF JSON reports via `application/json` or `multipart/form-data`,
- * validates with Zod, persists TestRun + TestResult rows, and fires
- * `run.ingested` on the EventBus.
+ * validates with Zod, persists TestRun + TestResult + TestArtifact rows,
+ * and fires `run.ingested` on the EventBus.
  *
  * This is the headline pipe — every downstream feature (Dashboard, AI
  * categorization, retention, search) depends on rows landing here.
@@ -11,6 +11,7 @@
  * @see skills/ctrf-ingest-validation.md — canonical ingest contract
  * @see skills/fastify-route-convention.md — plugin pattern, service boundary
  * @see skills/zod-schema-first.md — CtrfReportSchema is the single source
+ * @see skills/artifact-security-and-serving.md — magic-bytes, size limits
  * @see docs/planning/database-design.md §DD-019 — idempotency policy
  */
 
@@ -19,7 +20,16 @@ import { ZodError, z } from 'zod';
 import { IngestService } from './service.js';
 import { Project } from '../../entities/index.js';
 import type { EventBus } from '../../services/event-bus.js';
+import type { ArtifactStorage } from '../../lib/artifact-storage.js';
 import { parseMaxJsonSize } from './size-limit.js';
+import {
+  validateMagicBytes,
+} from '../../lib/magic-bytes.js';
+import {
+  validateFileSize,
+  validateRunTotal,
+  parseMaxArtifactSizePerRun,
+} from '../../lib/artifact-validation.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -32,6 +42,20 @@ import { parseMaxJsonSize } from './size-limit.js';
  * @see docs/planning/database-design.md §DD-019 — key validation
  */
 const PRINTABLE_ASCII_RE = /^[\x20-\x7E]+$/;
+
+/**
+ * Type for a parsed multipart artifact file part.
+ */
+interface ParsedArtifactPart {
+  /** The fieldname (e.g. "artifacts[screenshot.png]"). */
+  fieldname: string;
+  /** The declared Content-Type from the multipart header. */
+  contentType: string | null;
+  /** The full file buffer. */
+  data: Buffer;
+  /** The original filename from the multipart header. */
+  filename: string | null;
+}
 
 // ---------------------------------------------------------------------------
 // Route plugin
@@ -49,6 +73,11 @@ const ingestPlugin: FastifyPluginAsync = async (fastify) => {
 
   // Resolve max JSON body size from env (default 10 MB)
   const maxJsonBytes = parseMaxJsonSize(process.env['MAX_CTRF_JSON_SIZE']);
+
+  // Resolve per-run artifact size limit from env (default 500 MB)
+  const maxArtifactSizePerRun = parseMaxArtifactSizePerRun(
+    process.env['MAX_ARTIFACT_SIZE_PER_RUN'],
+  );
 
   fastify.post('/api/v1/projects/:slug/runs', {
     /**
@@ -127,18 +156,60 @@ const ingestPlugin: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    // -- Parse CTRF body from JSON or multipart ---------------------------
+    // -- Parse CTRF body + artifacts from JSON or multipart ---------------
     let rawCtrf: unknown;
     const contentType = request.headers['content-type'] ?? '';
+    let artifactParts: ParsedArtifactPart[] = [];
 
     if (contentType.includes('multipart/form-data')) {
-      // Multipart: extract the `ctrf` field
-      rawCtrf = await parseMultipartCtrf(request);
-      if (rawCtrf === null) {
+      const parsed = await parseMultipartRequest(request);
+
+      if (parsed.ctrf === null) {
         return reply.status(422).send({
           error: 'Missing "ctrf" field in multipart body',
           code: 'MISSING_CTRF_FIELD',
         });
+      }
+
+      rawCtrf = parsed.ctrf;
+      artifactParts = parsed.artifacts;
+
+      // -- Validate artifact sizes and magic bytes ------------------------
+      let runTotalBytes = 0;
+
+      for (const part of artifactParts) {
+        const fileSize = part.data.length;
+        const ct = part.contentType ?? 'application/octet-stream';
+
+        // Per-file size check (before any disk write)
+        const fileError = validateFileSize(fileSize, ct);
+        if (fileError) {
+          return reply.status(413).send({
+            error: fileError,
+            code: 'ARTIFACT_FILE_TOO_LARGE',
+          });
+        }
+
+        // Per-run total check (before any disk write)
+        const totalError = validateRunTotal(runTotalBytes, fileSize, maxArtifactSizePerRun);
+        if (totalError) {
+          return reply.status(413).send({
+            error: totalError,
+            code: 'ARTIFACT_RUN_TOTAL_EXCEEDED',
+            limit: maxArtifactSizePerRun.toString(),
+          });
+        }
+
+        // Magic-bytes validation (read first 16 bytes from the buffer)
+        const headerBytes = part.data.subarray(0, Math.min(16, part.data.length));
+        if (!validateMagicBytes(headerBytes, ct)) {
+          return reply.status(400).send({
+            error: `Magic bytes do not match declared Content-Type ${ct}`,
+            code: 'MAGIC_BYTES_MISMATCH',
+          });
+        }
+
+        runTotalBytes += fileSize;
       }
     } else {
       // JSON body — Fastify already parsed it
@@ -154,15 +225,19 @@ const ingestPlugin: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    // -- Resolve EventBus -------------------------------------------------
+    // -- Resolve EventBus and ArtifactStorage -----------------------------
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const eventBus = (fastify as any).eventBus as EventBus;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const artifactStorage = (fastify as any).artifactStorage as ArtifactStorage;
 
     // -- Delegate to service layer ----------------------------------------
     try {
       const result = await service.ingest(em, project, rawCtrf, {
         idempotencyKey: idempotencyKey ?? undefined,
         eventBus,
+        artifactStorage,
+        artifactParts,
       });
 
       if (result.replay) {
@@ -212,42 +287,54 @@ function extractIdempotencyKey(
 }
 
 /**
- * Parse the `ctrf` field from a multipart request.
+ * Parse a multipart request: extract the `ctrf` JSON field and all file parts.
  *
- * Discards any file parts (artifact uploads are CTRF-003 scope).
- * Returns `null` if no `ctrf` field is found.
+ * Returns both the parsed CTRF JSON and the collected artifact file buffers.
+ * File parts are fully consumed into memory so they can be validated
+ * (magic bytes, size) before being passed to the service layer.
  *
  * @see skills/ctrf-ingest-validation.md §Multipart uploads
  */
-async function parseMultipartCtrf(
+async function parseMultipartRequest(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   request: any,
-): Promise<unknown | null> {
-  // @fastify/multipart attaches `.parts()` to the request
+): Promise<{ ctrf: unknown | null; artifacts: ParsedArtifactPart[] }> {
   const parts = request.parts();
   let ctrfJson: string | null = null;
+  const artifacts: ParsedArtifactPart[] = [];
 
   for await (const part of parts) {
     if (part.type === 'field' && part.fieldname === 'ctrf') {
       ctrfJson = part.value as string;
     }
-    // File parts are intentionally discarded (CTRF-003 scope).
-    // If it's a file, consume the stream to avoid backpressure.
+
     if (part.type === 'file') {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      for await (const _chunk of part.file) {
-        // Drain the stream — artifact storage is CTRF-003 scope
+      // Collect the full file into a buffer for validation.
+      const chunks: Buffer[] = [];
+      for await (const chunk of part.file) {
+        chunks.push(chunk);
       }
+      const data = Buffer.concat(chunks);
+
+      artifacts.push({
+        fieldname: part.fieldname,
+        contentType: part.mimetype ?? null,
+        data,
+        filename: part.filename ?? null,
+      });
     }
   }
 
-  if (!ctrfJson) return null;
-
-  try {
-    return JSON.parse(ctrfJson);
-  } catch {
-    return null; // Malformed JSON in the ctrf field — will fail Zod validation
+  let parsedCtrf: unknown | null = null;
+  if (ctrfJson) {
+    try {
+      parsedCtrf = JSON.parse(ctrfJson);
+    } catch {
+      parsedCtrf = null; // Malformed JSON — will fail Zod validation downstream
+    }
   }
+
+  return { ctrf: parsedCtrf, artifacts };
 }
 
 export default ingestPlugin;

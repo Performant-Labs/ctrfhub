@@ -13,13 +13,14 @@
 /**
  * Artifact storage abstraction (local FS or S3/MinIO).
  *
- * The real implementations (`LocalArtifactStorage`, `S3ArtifactStorage`)
- * and the test double (`MemoryArtifactStorage`) ship in INFRA-004 / CTRF-003.
+ * Re-exports the canonical interface from `src/lib/artifact-storage.ts`.
+ * The `close()` method required by `AppOptions.artifactStorage` is part
+ * of that interface.
+ *
+ * @see src/lib/artifact-storage.ts
  */
-export interface ArtifactStorage {
-  /** Release any held resources (file handles, S3 client connections). */
-  close(): Promise<void>;
-}
+import type { ArtifactStorage } from './lib/artifact-storage.js';
+export type { ArtifactStorage };
 
 /**
  * Event bus abstraction for inter-service communication.

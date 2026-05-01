@@ -72,4 +72,8 @@ export class MemoryArtifactStorage implements ArtifactStorage {
   clear(): void {
     this.store.clear();
   }
+
+  async close(): Promise<void> {
+    // In-memory storage has no resources to release.
+  }
 }

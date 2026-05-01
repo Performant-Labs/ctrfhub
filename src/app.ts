@@ -44,6 +44,7 @@ import { fromNodeHeaders } from 'better-auth/node';
 
 import fastifyMultipart from '@fastify/multipart';
 import type { AppOptions } from './types.js';
+import { LocalArtifactStorage } from './lib/artifact-storage.js';
 import type { BootState } from './modules/health/schemas.js';
 import { HealthResponseSchema } from './modules/health/schemas.js';
 import { buildAuth } from './auth.js';
@@ -320,12 +321,13 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     await eventBus.close();
   });
 
-  if (options.artifactStorage) {
-    app.decorate('artifactStorage', options.artifactStorage);
-    app.addHook('onClose', async () => {
-      await options.artifactStorage!.close();
-    });
-  }
+  // ArtifactStorage — injected by tests via `options.artifactStorage`;
+  // in production defaults to LocalArtifactStorage (local filesystem).
+  const artifactStorage = options.artifactStorage ?? new LocalArtifactStorage();
+  app.decorate('artifactStorage', artifactStorage);
+  app.addHook('onClose', async () => {
+    await artifactStorage.close();
+  });
 
   // AiProvider — injected by tests via `options.aiProvider`; in production
   // constructed from env vars when `AI_PROVIDER` is set. Undefined when AI

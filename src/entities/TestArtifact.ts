@@ -27,6 +27,7 @@ const TestArtifactSchema = defineEntity({
     artifactType:         p.string().length(20),
     storageType:          p.string().length(10),
     storageKey:           p.string().length(1000),
+    referenceUrl:         p.string().length(2048).nullable(),
     sizeBytes:            p.integer().nullable(),
     contentTypeVerified:  p.boolean().default(true),
     createdAt:            p.datetime().defaultRaw('CURRENT_TIMESTAMP'),
