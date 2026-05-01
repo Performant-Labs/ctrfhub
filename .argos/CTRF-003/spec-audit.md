@@ -69,6 +69,10 @@ The implementer and test-writer flagged five judgment calls in their handoffs. E
 
 ## Verdict
 
+**~~BLOCK~~ → PASS** after Remediation Pass 1 + Pass 2 (see § Re-audit below).
+
+### Original verdict (preserved for record)
+
 **BLOCK** — remediation required.
 
 The blocking finding is #1: the documented per-type per-file size ceilings (image 10 MB, video 100 MB, zip 200 MB, log 5 MB) are not enforceable in production because `@fastify/multipart` is registered with no `limits` override and its default `fileSize: 1MB` rejects every artifact > 1 MB before the custom check can run. This is a direct contract failure against the brief's §Step 4 and `skills/ctrf-ingest-validation.md` §"Multipart uploads".
@@ -84,3 +88,42 @@ Non-blocking items that are recommended but do not gate this story:
 - Coverage gaps #1 (unit tests for new lib helpers) — strongly recommended follow-up
 
 If BLOCK is accepted: return the story to the Feature-implementer per `implementstory.md` Phase 1 with Finding #1 as the remediation target. Once fixed, only the impacted integration test (Test #4) needs re-running; the rest of the suite is unaffected.
+
+---
+
+## Re-audit (2026-05-01, post-remediation)
+
+**Branch tip:** `story/CTRF-003-opus` @ `479eaa3`
+**Remediation commits:**
+- `66f01a6` fix(CTRF-003): raise @fastify/multipart fileSize ceiling so per-type limits fire (Pass 1, Feature-implementer)
+- `479eaa3` test(CTRF-003): tighten per-file 413 assertion and cover 5 MB acceptance (Pass 2, Test-writer)
+
+**Triggered by:** `.argos/CTRF-003/remediation-1.md`
+
+### Five-point checklist (per remediation brief)
+
+| # | Check | Result |
+|---|---|---|
+| 1 | `src/app.ts` multipart registration sets `limits.fileSize ≥ 200 MB` | ✓ Lines 563-565 set `fileSize: 200 * 1024 * 1024` (200 MB). Comment block correctly explains the ceiling rationale. |
+| 2 | Test #4 asserts `code === 'ARTIFACT_FILE_TOO_LARGE'` with > 10 MB file | ✓ `src/__tests__/integration/ingest-artifacts.test.ts:357-370` — uses 12 MB, asserts `expect(body.code).toBe('ARTIFACT_FILE_TOO_LARGE')`. |
+| 3 | New Test #4b accepts a 5 MB valid PNG with 201 | ✓ `src/__tests__/integration/ingest-artifacts.test.ts:373-385` — `it('accepts a valid PNG between 1 MB and the 10 MB image limit', ...)`, expects 201. |
+| 4 | `npm test` — full suite passes | ✓ **413/413 passed** across 20 test files (Node 22.21.1 / npm 10.9.4 on darwin-arm64). |
+| 5 | `tsc --noEmit` and `npm run lint` clean | ✓ tsc: 0 errors. eslint: 0 errors, 14 pre-existing `no-explicit-any` warnings in `health.test.ts` unchanged. |
+
+### Scope boundary check
+
+- Pass 1 commit modified **only** `src/app.ts` (+7 lines) — within feature-implementer scope.
+- Pass 2 commit modified **only** `src/__tests__/integration/ingest-artifacts.test.ts` (+28 -7 lines) — within test-writer scope.
+- No other files touched in either remediation commit. Role boundaries respected.
+
+### Re-audit verification environment
+
+- Node: v22.21.1 (matches `.nvmrc`; project requires `>=22.0.0` per `package.json`).
+- `better-sqlite3` rebuilt against v22 before the run (host had drifted to system Node 25; native binding was stale at `NODE_MODULE_VERSION 115`). Rebuild was infrastructure-only, not a code change.
+- Re-audit driven via the claude-bridge to the macOS host so native bindings resolve correctly.
+
+### Verdict
+
+**PASS.** The blocking finding is resolved; the documented per-type ceilings now actually govern in production, and the test suite tightly verifies both the rejection path (12 MB → 413 with `ARTIFACT_FILE_TOO_LARGE`) and the acceptance path (5 MB → 201). All other audit findings (NIT/NON-BLOCKING) remain as previously recorded — Findings #2, #3, #4, #5 and Coverage gap #1 are tracked as follow-ups, not gates.
+
+The story is ready for `implementstory.md` Phase 5 (PR creation).
