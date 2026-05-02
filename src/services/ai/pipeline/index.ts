@@ -8,7 +8,19 @@
  */
 
 export { categorizeRun } from './categorizer.js';
+export { correlateRootCauses } from './correlator.js';
+export { generateSummary } from './summarizer.js';
+export { startSweeper } from './sweeper.js';
 export { recoverStalePipelineRows } from './recovery.js';
 export { isAiCloudPipelineConsented } from './consent.js';
-export { CategorizeOutputSchema, AiCategoryEnum } from './schemas.js';
-export type { ValidatedCategorizeOutput } from './schemas.js';
+export {
+  CategorizeOutputSchema,
+  CorrelateOutputSchema,
+  SummaryOutputSchema,
+  AiCategoryEnum,
+} from './schemas.js';
+export type {
+  ValidatedCategorizeOutput,
+  ValidatedCorrelateOutput,
+  ValidatedSummaryOutput,
+} from './schemas.js';

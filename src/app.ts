@@ -51,10 +51,16 @@ import { User } from './entities/index.js';
 import { registerAuthRoutes } from './modules/auth/routes.js';
 import ingestPlugin from './modules/ingest/routes.js';
 import { MemoryEventBus, RunEvents } from './services/event-bus.js';
-import type { RunIngestedPayload } from './services/event-bus.js';
+import type { RunIngestedPayload, AiStageEventPayload } from './services/event-bus.js';
 import { createAiProvider } from './services/ai/index.js';
 import { LocalArtifactStorage } from './lib/local-artifact-storage.js';
-import { categorizeRun, recoverStalePipelineRows } from './services/ai/pipeline/index.js';
+import {
+  categorizeRun,
+  correlateRootCauses,
+  generateSummary,
+  recoverStalePipelineRows,
+  startSweeper,
+} from './services/ai/pipeline/index.js';
 
 // ---------------------------------------------------------------------------
 // Module-private: resolve __dirname for ESM (needed by @fastify/static root)
@@ -430,6 +436,46 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
           // Swallowed: EventBus handlers must not propagate errors.
           // The reserve-execute-commit pattern handles retries internally.
         }
+      });
+
+      // ── A2: root cause correlation ──────────────────────────────
+      // Subscribes to run.ai_categorized. Handles partial:true from
+      // upstream terminal failures by treating uncategorized results
+      // as 'unknown' category.
+      eventBus.subscribe('ai', RunEvents.RUN_AI_CATEGORIZED, async (rawPayload) => {
+        const payload = rawPayload as AiStageEventPayload;
+        try {
+          await correlateRootCauses(payload, aiProvider, orm, eventBus);
+        } catch (err) {
+          app.log.error(
+            { err, runId: payload.runId },
+            'A2 correlation failed — unhandled error in correlateRootCauses',
+          );
+        }
+      });
+
+      // ── A3: run narrative summary ───────────────────────────────
+      // Subscribes to run.ai_correlated. Handles partial:true by
+      // skipping A2 root cause cluster data in the summary input.
+      eventBus.subscribe('ai', RunEvents.RUN_AI_CORRELATED, async (rawPayload) => {
+        const payload = rawPayload as AiStageEventPayload;
+        try {
+          await generateSummary(payload, aiProvider, orm, eventBus);
+        } catch (err) {
+          app.log.error(
+            { err, runId: payload.runId },
+            'A3 summary generation failed — unhandled error in generateSummary',
+          );
+        }
+      });
+
+      // ── Stuck-stage sweeper ─────────────────────────────────────
+      // Runs every 60s to detect rows that are stuck in 'running'
+      // state (crash before catch handler). Terminal-fails exhausted
+      // rows (attempt >= 3) so downstream stages can proceed.
+      const stopSweeper = startSweeper(orm, eventBus);
+      app.addHook('onClose', async () => {
+        stopSweeper();
       });
     }
   }
