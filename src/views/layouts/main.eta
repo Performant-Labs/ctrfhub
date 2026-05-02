@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-[--color-surface] text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1280">
+  <meta name="description" content="CTRFHub — Self-hosted test-reporting dashboard">
+  <title><%= it.title ?? "CTRFHub" %></title>
+
+  <!-- Tailwind CSS (compiled) -->
+  <link rel="stylesheet" href="/assets/tailwind.css">
+
+  <!-- HTMX — core engine (sync load, before any extensions) -->
+  <script src="/assets/htmx.min.js"></script>
+
+  <!-- Idiomorph extension — required for hx-swap="morph" -->
+  <script src="/assets/idiomorph-ext.min.js"></script>
+
+  <!-- Alpine.js — deferred to not block initial render -->
+  <script defer src="/assets/alpine.min.js"></script>
+
+  <!-- Flowbite — component library init -->
+  <script src="/assets/flowbite.min.js"></script>
+
+  <!-- CTRFHub app — Flowbite re-init after HTMX swaps -->
+  <script type="module" src="/assets/app.js"></script>
+</head>
+<body hx-ext="morph" class="min-h-screen">
+  <%~ await includeFile('pages/' + it.body + '.eta', it) %>
+</body>
+</html>
