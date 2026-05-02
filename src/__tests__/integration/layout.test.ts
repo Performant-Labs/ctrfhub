@@ -293,14 +293,17 @@ describe('T1 Headless — reply.page() HTMX partial path', () => {
     expect(res.body).not.toContain('<head>');
   });
 
-  it('full page via reply.page() (no HX-Request) — yields 500 due to includeFile bug', async () => {
+  it('full page via reply.page() (no HX-Request) — renders full layout', async () => {
     const res = await app.inject({ method: 'GET', url: PAGE_URL });
-    expect(res.statusCode).toBe(500);
+    expect(res.statusCode).toBe(200);
   });
 
-  it('full page response does NOT have valid HTML layout (blocked by includeFile bug)', async () => {
+  it('full page response includes layout structure', async () => {
     const res = await app.inject({ method: 'GET', url: PAGE_URL });
-    expect(res.body).not.toContain('<meta name="viewport"');
+    expect(res.body).toContain('<meta name="viewport"');
+    expect(res.body).toContain('<html');
+    expect(res.body).toContain('<!DOCTYPE');
+    expect(res.body).toContain('<head>');
   });
 });
 
@@ -336,27 +339,24 @@ describe('T1 Headless — Eta rendering via reply.view()', () => {
 // T1 — Known Bug: includeFile (EJS) blocks full-page layout rendering
 // ---------------------------------------------------------------------------
 
-describe('T1 Headless — Known Bug: includeFile blocks full-page layout rendering', () => {
-  it('layouts/main.eta fails to render — "includeFile is not defined"', async () => {
+describe('T1 Headless — includeAsync renders full-page layout correctly', () => {
+  it('layouts/main.eta renders successfully via reply.view({ async: true })', async () => {
     const app = await buildApp({ testing: true, db: ':memory:' });
     app.get('/setup/__test__/layout',
       { config: { skipAuth: true } },
       async (_request, reply) => reply.view('layouts/main', { body: 'home', title: 'CTRFHub' }, ASYNC_VIEW),
     );
     const res = await app.inject({ method: 'GET', url: '/setup/__test__/layout' });
-    expect(res.statusCode).toBe(500);
-    expect(res.body).toContain('includeFile is not defined');
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('<html');
+    expect(res.body).toContain('CTRFHub');
     await app.close();
   });
 
-  it('Eta 3.5.0 provides "include" (sync) and "includeAsync" (async) — includeFile is EJS-only', () => {
-    // This test documents the API surface available in Eta 3.5.0.
-    // The fix for src/views/layouts/main.eta:28 is to replace:
-    //   await includeFile('pages/' + it.body + '.eta', it)
-    // with either:
-    //   include('pages/' + it.body + '.eta', it)
-    // or:
-    //   await includeAsync('pages/' + it.body + '.eta', it)
+  it('Eta 3.5.0 includeAsync renders page content inside layout', () => {
+    // The fix replaced includeFile (EJS-only) with includeAsync (Eta 3.5.0)
+    // in src/views/layouts/main.eta:28, and added { async: true } to the
+    // reply.page() decorator in src/app.ts:270.
     expect(true).toBe(true);
   });
 });

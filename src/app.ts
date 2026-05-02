@@ -267,8 +267,21 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     if (isHxRequest) {
       return this.view(`partials/${template}`, data);
     }
-    return this.view('layouts/main', { body: template, ...data });
+    return this.view('layouts/main', { body: template, ...data }, { async: true } as any);
   });
+
+  // -----------------------------------------------------------------------
+  // 6b. GET / — home page
+  // -----------------------------------------------------------------------
+
+  /**
+   * Landing page — renders `pages/home.eta` inside the main layout.
+   *
+   * Uses `reply.page()` for HTMX partial-vs-full-page branching:
+   *   - Direct navigation → full layout with `layouts/main.eta`
+   *   - HTMX request → `partials/home.eta` fragment
+   */
+  app.get('/', async (_request, reply) => reply.page('home'));
 
   // -----------------------------------------------------------------------
   // 7. MikroORM lifecycle — init, per-request em fork, shutdown

@@ -25,6 +25,6 @@
   <script type="module" src="/assets/app.js"></script>
 </head>
 <body hx-ext="morph" class="min-h-screen">
-  <%~ await includeFile('pages/' + it.body + '.eta', it) %>
+  <%~ await includeAsync('../pages/' + it.body + '.eta', it) %>
 </body>
 </html>
