@@ -18,6 +18,8 @@ await app.register(async (fastify) => {
   }, async (_request, reply) => reply.page('home', { title: 'CTRFHub' }));
 });
 
+await app.ready();
+
 const seedRes = await app.inject({
   method: 'POST',
   url: '/api/auth/sign-up/email',
