@@ -11,6 +11,13 @@ if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
 
 const app = await buildApp({ testing: true, db: dbPath });
 
+await app.register(async (fastify) => {
+  fastify.get('/__test__/home', {
+    config: { skipAuth: true },
+    schema: {},
+  }, async (_request, reply) => reply.page('home', { title: 'CTRFHub' }));
+});
+
 const seedRes = await app.inject({
   method: 'POST',
   url: '/api/auth/sign-up/email',
@@ -23,7 +30,7 @@ if (seedRes.statusCode >= 400) {
 }
 console.log('E2E test user created');
 
-const verifyRes = await app.inject({ method: 'GET', url: '/' });
+const verifyRes = await app.inject({ method: 'GET', url: '/__test__/home' });
 console.log('Home page status:', verifyRes.statusCode, verifyRes.body.substring(0, 80));
 
 await app.listen({ port: 3000, host: '127.0.0.1' });

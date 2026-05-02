@@ -29,24 +29,24 @@ test.describe('INFRA-003 T2 ARIA — structural skeleton (1280x800)', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
   test('page loads with HTTP 200', async ({ page }) => {
-    const res = await page.goto('/');
+    const res = await page.goto('/__test__/home');
     expect(res?.status()).toBe(200);
   });
 
   test('page title is "CTRFHub"', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     await expect(page).toHaveTitle('CTRFHub');
   });
 
   test('main landmark is present and visible', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     const main = page.locator('main');
     await expect(main).toBeVisible();
     await expect(main).toHaveCount(1);
   });
 
   test('h1 heading is present with correct text', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     const h1 = page.locator('h1');
     await expect(h1).toBeVisible();
     await expect(h1).toHaveText('CTRFHub');
@@ -54,19 +54,19 @@ test.describe('INFRA-003 T2 ARIA — structural skeleton (1280x800)', () => {
   });
 
   test('ARIA snapshot contains main landmark', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     const snap = await page.ariaSnapshot();
     expect(snap).toMatch(/main/);
   });
 
   test('ARIA snapshot contains heading level 1', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     const snap = await page.ariaSnapshot();
     expect(snap).toMatch(/- heading "CTRFHub" \[level=1\]/);
   });
 
   test('ARIA snapshot: no duplicate main landmarks', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     const snap = await page.ariaSnapshot();
     // Count occurrences of "main" role — should appear once
     const mainMatches = (snap.match(/role="main"/g) || snap.match(/^main$/m) || []).length;
@@ -74,19 +74,19 @@ test.describe('INFRA-003 T2 ARIA — structural skeleton (1280x800)', () => {
   });
 
   test('viewport meta tag content is width=1280', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     const viewport = page.locator('meta[name="viewport"]');
     await expect(viewport).toHaveAttribute('content', 'width=1280');
   });
 
   test('charset meta tag is UTF-8', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     const charset = page.locator('meta[charset]');
     await expect(charset).toHaveAttribute('charset', 'UTF-8');
   });
 
   test('script load order: tailwind.css → htmx → idiomorph → alpine → flowbite → app.js', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     const order = await page.evaluate(() => {
       const resources: string[] = [];
       document.querySelectorAll('link[rel="stylesheet"], script[src]').forEach((el) => {
@@ -119,7 +119,7 @@ test.describe('INFRA-003 T2 ARIA — nav landmark (1280x800)', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
   test('nav landmark is absent from stub home page (nav will be added in DASH-001)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     const navLocator = page.locator('nav');
     await expect(navLocator).toHaveCount(0);
   });
@@ -143,13 +143,13 @@ test.describe('INFRA-003 T3 Visual — narrow-smoke (375x800)', () => {
       }
     });
 
-    await page.goto('/');
+    await page.goto('/__test__/home');
     await page.waitForLoadState('networkidle');
     expect(errors).toEqual([]);
   });
 
   test('no horizontal overflow at 375x800', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     await page.waitForLoadState('networkidle');
 
     const hasOverflow = await page.evaluate(() => {
@@ -159,14 +159,14 @@ test.describe('INFRA-003 T3 Visual — narrow-smoke (375x800)', () => {
   });
 
   test('h1 is visible at narrow viewport', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     const h1 = page.locator('h1');
     await expect(h1).toBeVisible();
     await expect(h1).toHaveText('CTRFHub');
   });
 
   test('page title is correct at narrow viewport', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     await expect(page).toHaveTitle('CTRFHub');
   });
 });
@@ -189,13 +189,13 @@ test.describe('INFRA-003 T3 Visual — baseline layout (1280x800)', () => {
       }
     });
 
-    await page.goto('/');
+    await page.goto('/__test__/home');
     await page.waitForLoadState('networkidle');
     expect(errors).toEqual([]);
   });
 
   test('main element is visible with non-zero dimensions', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     await page.waitForLoadState('networkidle');
 
     const main = page.locator('main');
@@ -208,7 +208,7 @@ test.describe('INFRA-003 T3 Visual — baseline layout (1280x800)', () => {
   });
 
   test('h1 heading renders at top of main content', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
     const h1 = page.locator('h1');
     await expect(h1).toBeVisible();
     await expect(h1).toHaveText('CTRFHub');
@@ -222,7 +222,7 @@ test.describe('INFRA-003 T3 Visual — baseline layout (1280x800)', () => {
   });
 
   test('body has expected dark surface styling', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/__test__/home');
 
     const bgClass = await page.locator('html').getAttribute('class');
     expect(bgClass).toContain('bg-[');
