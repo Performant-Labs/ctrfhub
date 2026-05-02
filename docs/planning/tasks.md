@@ -213,7 +213,7 @@ Status key:
 **Page verification tiers:** none
 **Critical test paths:** pipeline chain order enforced — `categorize → correlate → summarize` (assert `ai_pipeline_log` row order); A2 subscribes to `run.ai_categorized`; A3 subscribes to `run.ai_correlated`; `ai_root_causes JSONB` / `ai_summary TEXT` columns populated; downstream stages run with `partial: true` if upstream stage terminally failed; stuck-stage sweeper at 60 s interval terminal-fails rows with `attempt ≥ 3`; no real LLM calls
 **Acceptance:** A2 subscribes to `run.ai_categorized`; A3 subscribes to `run.ai_correlated`; `ai_root_causes JSONB` and `ai_summary TEXT` columns on `test_runs`; pipeline chain order verified by integration test (`categorize → correlate → summarize` index assertions); stages run with `partial: true` if upstream stage failed; `MockAiProvider.correlateRootCauses` and `generateRunSummary` called; stuck-stage sweeper (60-second interval, terminal-fail at `attempt ≥ 3`).
-- [/] AI-003
+- [x] AI-003
 
 ---
 
