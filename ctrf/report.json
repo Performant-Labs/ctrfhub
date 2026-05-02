@@ -1,0 +1,26 @@
+{
+  "reportFormat": "CTRF",
+  "specVersion": "0.0.0",
+  "reportId": "f8d17e08-221d-41be-8d3c-c13f8d671527",
+  "timestamp": "2026-05-02T03:51:33.382Z",
+  "generatedBy": "playwright-ctrf-json-reporter",
+  "results": {
+    "tool": {
+      "name": "playwright"
+    },
+    "summary": {
+      "tests": 0,
+      "passed": 0,
+      "failed": 0,
+      "pending": 0,
+      "skipped": 0,
+      "other": 0,
+      "start": 1777693895121,
+      "stop": 1777693895121
+    },
+    "tests": [],
+    "environment": {
+      "appName": "CTRFHub E2E"
+    }
+  }
+}
