@@ -530,6 +530,13 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     // No auth resolved. HTMX clients need a 200-with-HX-Redirect (NOT 401)
     // because HTMX only processes response headers on 2xx responses by default.
     // Browser clients get a standard 302 redirect.
+    //
+    // Guard against redirect loops: /login and /setup don't have auth-guarded
+    // routes yet (AUTH-003), so redirecting there would just loop forever.
+    if (rawPath === '/login' || rawPath === '/setup') {
+      return reply.status(404).send();
+    }
+
     if (request.headers['hx-request']) {
       reply.header('HX-Redirect', '/login');
       return reply.status(200).send();
