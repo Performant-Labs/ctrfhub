@@ -143,7 +143,7 @@ describe('AI-003 A2 Correlation — happy path', () => {
   });
 
   it('reserves → executes → commits and publishes run.ai_correlated', async () => {
-    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-a2-happy', 3, { withAiCategory: true });
+    const { runId, resultIds, _projectId } = await seedRunWithFailures(app, 'org-a2-happy', 3, { withAiCategory: true });
 
     aiProvider.reset();
     aiProvider.setRootCauses(makeCorrResponse(resultIds));
@@ -206,7 +206,7 @@ describe('AI-003 A2 Correlation — happy path', () => {
   });
 
   it('skips LLM call and publishes event when already correlated (idempotency)', async () => {
-    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-a2-idem', 3, { withAiCategory: true });
+    const { runId, resultIds, _projectId } = await seedRunWithFailures(app, 'org-a2-idem', 3, { withAiCategory: true });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orm = (app as any).orm;
@@ -251,7 +251,7 @@ describe('AI-003 A3 Summary — happy path', () => {
   });
 
   it('reserves → executes → commits and publishes run.ai_summarized', async () => {
-    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-a3-happy', 3, { withAiCategory: true });
+    const { runId, resultIds, _projectId } = await seedRunWithFailures(app, 'org-a3-happy', 3, { withAiCategory: true });
 
     // Pre-set ai_root_causes so A3 can parse them
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -299,7 +299,7 @@ describe('AI-003 A3 Summary — happy path', () => {
   });
 
   it('skips LLM call and publishes event when already summarized (idempotency)', async () => {
-    const { runId, resultIds } = await seedRunWithFailures(app, 'org-a3-idem', 2, { withAiCategory: true });
+    const { runId, _resultIds } = await seedRunWithFailures(app, 'org-a3-idem', 2, { withAiCategory: true });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orm = (app as any).orm;
@@ -344,7 +344,7 @@ describe('AI-003 Partial:true propagation', () => {
 
   it('A2 treats uncategorized results as "unknown" when upstream partial is true', async () => {
     // Seed results WITHOUT ai_category (simulating A1 partial failure)
-    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-partial-up', 3, { withAiCategory: false });
+    const { runId, resultIds, _projectId } = await seedRunWithFailures(app, 'org-partial-up', 3, { withAiCategory: false });
 
     aiProvider.reset();
     aiProvider.setRootCauses(makeCorrResponse(resultIds));
@@ -368,7 +368,7 @@ describe('AI-003 Partial:true propagation', () => {
   });
 
   it('A2 terminal fail at attempt >= 3 publishes run.ai_correlated with partial:true', async () => {
-    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-a2-term', 3, { withAiCategory: true });
+    const { runId, _resultIds, _projectId } = await seedRunWithFailures(app, 'org-a2-term', 3, { withAiCategory: true });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orm = (app as any).orm;
@@ -398,7 +398,7 @@ describe('AI-003 Partial:true propagation', () => {
   });
 
   it('A3 receives partial:true and skips root cause clusters in input', async () => {
-    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-a3-partial', 3, { withAiCategory: true });
+    const { runId, resultIds, _projectId } = await seedRunWithFailures(app, 'org-a3-partial', 3, { withAiCategory: true });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orm = (app as any).orm;
@@ -659,7 +659,7 @@ describe('AI-003 Event chain ordering', () => {
     await ensureUniqueIndex(app);
 
     // Seed run + failures with A1 categories (simulating A1 complete)
-    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-chain', 2, { withAiCategory: true });
+    const { runId, resultIds, _projectId } = await seedRunWithFailures(app, 'org-chain', 2, { withAiCategory: true });
 
     // Pre-set ai_root_causes so A3 can parse them after A2 runs
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -708,7 +708,7 @@ describe('AI-003 Event chain ordering', () => {
     const app = await buildApp({ testing: true, db: ':memory:', eventBus, aiProvider });
     await ensureUniqueIndex(app);
 
-    const { runId, resultIds, projectId } = await seedRunWithFailures(app, 'org-chain-p', 3, { withAiCategory: true });
+    const { runId, resultIds, _projectId } = await seedRunWithFailures(app, 'org-chain-p', 3, { withAiCategory: true });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orm = (app as any).orm;
