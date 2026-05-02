@@ -143,7 +143,7 @@ Status key:
 **Page verification tiers:** none
 **Critical test paths:** `@ctrfhub/playwright-reporter` and `@ctrfhub/cypress-reporter` both produce identical stored `TestRun` + `TestResult` records against the same fixture run; `examples/github-actions/` YAML has working ingest URL + token placeholders; all three ingest paths (Playwright reporter, Cypress reporter, raw CTRF POST) tested against CTRF-002 route
 **Acceptance:** `@ctrfhub/playwright-reporter` npm package scaffolded under `packages/`; `@ctrfhub/cypress-reporter` scaffolded; `examples/github-actions/` YAML example pre-filled with ingest URL and token placeholder; all three produce identical stored run records (verified by integration test with fixture runs).
-- [ ] CTRF-004
+- [/] CTRF-004
 
 ---
 
