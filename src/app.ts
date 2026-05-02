@@ -257,7 +257,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
    *   as a swap-ready HTML fragment (no `<html>`, `<head>`, or layout chrome).
    * - **Direct navigation** (no `HX-Request`) → renders `layouts/main.eta` with
    *   `{ body: template, ...data }`. The layout in turn includes
-   *   `pages/{template}.eta` via `includeFile`.
+   *   `pages/{template}.eta` via `includeAsync`.
    *
    * @see skills/eta-htmx-partial-rendering.md
    * @see skills/fastify-route-convention.md §HTMX + View Integration
@@ -281,7 +281,9 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
    *   - Direct navigation → full layout with `layouts/main.eta`
    *   - HTMX request → `partials/home.eta` fragment
    */
-  app.get('/', async (_request, reply) => reply.page('home'));
+  app.get('/', {
+    schema: {},
+  }, async (_request, reply) => reply.page('home'));
 
   // -----------------------------------------------------------------------
   // 7. MikroORM lifecycle — init, per-request em fork, shutdown
