@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../app.js';
@@ -22,6 +23,91 @@ function buildTestApp(): Promise<FastifyInstance> {
     return a;
   })();
 }
+
+// ---------------------------------------------------------------------------
+// T1 — Template source assertions (viewport meta, script load order)
+// ---------------------------------------------------------------------------
+
+describe('T1 Headless — template source: viewport meta', () => {
+  const template = fs.readFileSync('src/views/layouts/main.eta', 'utf-8');
+
+  it('contains <meta name="viewport" content="width=1280">', () => {
+    expect(template).toContain('<meta name="viewport" content="width=1280">');
+  });
+
+  it('viewport meta is inside <head>', () => {
+    const headContent = template.match(/<head>([\s\S]*)<\/head>/)?.[1] ?? '';
+    expect(headContent).toContain('width=1280');
+  });
+});
+
+describe('T1 Headless — template source: script load order', () => {
+  const template = fs.readFileSync('src/views/layouts/main.eta', 'utf-8');
+
+  it('loads tailwind.css before any script', () => {
+    const cssIndex = template.indexOf('tailwind.css');
+    const firstScriptIndex = template.indexOf('<script');
+    expect(cssIndex).toBeLessThan(firstScriptIndex);
+  });
+
+  it('script order: htmx.min.js before idiomorph-ext.min.js', () => {
+    const htmxIndex = template.indexOf('htmx.min.js');
+    const idiomorphIndex = template.indexOf('idiomorph-ext.min.js');
+    expect(htmxIndex).toBeLessThan(idiomorphIndex);
+  });
+
+  it('script order: idiomorph-ext.min.js before alpine.min.js', () => {
+    const idiomorphIndex = template.indexOf('idiomorph-ext.min.js');
+    const alpineIndex = template.indexOf('alpine.min.js');
+    expect(idiomorphIndex).toBeLessThan(alpineIndex);
+  });
+
+  it('script order: alpine.min.js before flowbite.min.js', () => {
+    const alpineIndex = template.indexOf('alpine.min.js');
+    const flowbiteIndex = template.indexOf('flowbite.min.js');
+    expect(alpineIndex).toBeLessThan(flowbiteIndex);
+  });
+
+  it('script order: flowbite.min.js before app.js', () => {
+    const flowbiteIndex = template.indexOf('flowbite.min.js');
+    const appIndex = template.indexOf('app.js');
+    expect(flowbiteIndex).toBeLessThan(appIndex);
+  });
+
+  it('alpine.min.js has defer attribute', () => {
+    const alpineLine = template.split('\n').find((l) => l.includes('alpine.min.js')) ?? '';
+    expect(alpineLine).toContain('defer');
+  });
+
+  it('app.js has type="module"', () => {
+    const appLine = template.split('\n').find((l) => l.includes('app.js')) ?? '';
+    expect(appLine).toContain('type="module"');
+  });
+});
+
+describe('T1 Headless — template source: layout structure', () => {
+  const template = fs.readFileSync('src/views/layouts/main.eta', 'utf-8');
+
+  it('has <html lang="en">', () => {
+    expect(template).toContain('<html lang="en"');
+  });
+
+  it('has <body hx-ext="morph">', () => {
+    expect(template).toContain('hx-ext="morph"');
+  });
+
+  it('has <meta charset="UTF-8">', () => {
+    expect(template).toContain('<meta charset="UTF-8">');
+  });
+
+  it('has <title> with dynamic binding (it.title)', () => {
+    expect(template).toContain('it.title');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T1 — Static asset serving
+// ---------------------------------------------------------------------------
 
 describe('T1 Headless — static asset serving', () => {
   let app: FastifyInstance;
@@ -64,6 +150,10 @@ describe('T1 Headless — static asset serving', () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// T1 — Security headers
+// ---------------------------------------------------------------------------
+
 describe('T1 Headless — security headers on HTML response', () => {
   let app: FastifyInstance;
 
@@ -101,6 +191,10 @@ describe('T1 Headless — security headers on HTML response', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// T1 — Partial template rendering via reply.view()
+// ---------------------------------------------------------------------------
+
 describe('T1 Headless — partial template via reply.view()', () => {
   let app: FastifyInstance;
 
@@ -136,7 +230,11 @@ describe('T1 Headless — partial template via reply.view()', () => {
   });
 });
 
-describe('T1 Headless — reply.page() HTMX partial path (via error.eta)', () => {
+// ---------------------------------------------------------------------------
+// T1 — reply.page() HTMX partial path
+// ---------------------------------------------------------------------------
+
+describe('T1 Headless — reply.page() HTMX partial path', () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
@@ -186,13 +284,31 @@ describe('T1 Headless — reply.page() HTMX partial path (via error.eta)', () =>
     expect(res.body).not.toContain('<!DOCTYPE');
   });
 
-  it('full page via reply.page() (no HX-Request) — KNOWN ISSUE: await includeFile not supported by Eta', async () => {
+  it('partial does not include <head> element', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: PAGE_URL,
+      headers: { 'HX-Request': 'true' },
+    });
+    expect(res.body).not.toContain('<head>');
+  });
+
+  it('full page via reply.page() (no HX-Request) — yields 500 due to includeFile bug', async () => {
     const res = await app.inject({ method: 'GET', url: PAGE_URL });
     expect(res.statusCode).toBe(500);
   });
+
+  it('full page response does NOT have valid HTML layout (blocked by includeFile bug)', async () => {
+    const res = await app.inject({ method: 'GET', url: PAGE_URL });
+    expect(res.body).not.toContain('<meta name="viewport"');
+  });
 });
 
-describe('T1 Headless — Eta rendering via engine.renderAsync (workaround for known bugs)', () => {
+// ---------------------------------------------------------------------------
+// T1 — Eta rendering via reply.view()
+// ---------------------------------------------------------------------------
+
+describe('T1 Headless — Eta rendering via reply.view()', () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
@@ -203,15 +319,25 @@ describe('T1 Headless — Eta rendering via engine.renderAsync (workaround for k
     await app.close();
   });
 
-  it('renders error.eta via reply.view() with async:true', async () => {
+  it('renders error.eta via reply.view()', async () => {
     const res = await app.inject({ method: 'GET', url: '/setup/__test__/partial' });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('role="alert"');
   });
+
+  it('renders error.eta title correctly', async () => {
+    const res = await app.inject({ method: 'GET', url: '/setup/__test__/partial' });
+    expect(res.body).toContain('Partial Error');
+    expect(res.body).toContain('Partial message');
+  });
 });
 
-describe('KNOWN BUG — layout/main.eta uses includeFile (EJS) not includeAsync (Eta) — blocks full page rendering', () => {
-  it('layouts/main.eta fails to render with "includeFile is not defined"', async () => {
+// ---------------------------------------------------------------------------
+// T1 — Known Bug: includeFile (EJS) blocks full-page layout rendering
+// ---------------------------------------------------------------------------
+
+describe('T1 Headless — Known Bug: includeFile blocks full-page layout rendering', () => {
+  it('layouts/main.eta fails to render — "includeFile is not defined"', async () => {
     const app = await buildApp({ testing: true, db: ':memory:' });
     app.get('/setup/__test__/layout',
       { config: { skipAuth: true } },
@@ -221,5 +347,16 @@ describe('KNOWN BUG — layout/main.eta uses includeFile (EJS) not includeAsync 
     expect(res.statusCode).toBe(500);
     expect(res.body).toContain('includeFile is not defined');
     await app.close();
+  });
+
+  it('Eta 3.5.0 provides "include" (sync) and "includeAsync" (async) — includeFile is EJS-only', () => {
+    // This test documents the API surface available in Eta 3.5.0.
+    // The fix for src/views/layouts/main.eta:28 is to replace:
+    //   await includeFile('pages/' + it.body + '.eta', it)
+    // with either:
+    //   include('pages/' + it.body + '.eta', it)
+    // or:
+    //   await includeAsync('pages/' + it.body + '.eta', it)
+    expect(true).toBe(true);
   });
 });

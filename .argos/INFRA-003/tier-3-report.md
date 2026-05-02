@@ -1,11 +1,11 @@
 # Tier 3 Visual Report — INFRA-003
 
-**Executed:** 2026-05-02 03:54
+**Executed:** 2026-05-02 04:07
 **Viewports:** 1280×800 (primary) + 375×800 (narrow-smoke: no-horizontal-scroll check)
 **Pre-conditions confirmed:** T1 ✓ (partial), T2 ✓, backdrop-contrast: N/A
-**Tool:** Playwright — structured assertions covering both viewports
+**Tool:** Playwright — locator + boundingBox assertions
 
-**Note:** Full layout-level screenshots (baseline at 1280×800) are blocked by the `includeFile` bug in `layouts/main.eta` (see T1 report). Tier 3 verifies the structural rendering of `pages/home.eta` content (which will be included by the layout once fixed) and the absence of horizontal overflow at narrow viewports.
+**Note:** Full layout-level screenshots (baseline at 1280×800) were not taken because full `layouts/main.eta` rendering is blocked by the `includeFile` bug (see T1 report). Tier 3 verifies the structural rendering of `pages/home.eta` content and the absence of horizontal overflow at narrow viewports using the e2e test server workaround.
 
 ## Screenshot inventory
 
@@ -13,17 +13,21 @@ Screenshots were not taken (full layout rendering is blocked). Tier 3 assertions
 
 | # | Check | Viewport | Assertion | Status |
 |---|---|---|---|---|
-| 1 | Desktop: `<main>` visible + has dimensions | 1280×800 | boundingBox non-null, width > 0, height > 0 | ✓ |
-| 2 | Desktop: `h1` visible with correct text | 1280×800 | "CTRFHub" | ✓ |
-| 3 | Desktop: page title set | 1280×800 | "CTRFHub" | ✓ |
-| 4 | Narrow smoke: no horizontal scroll | 375×800 | scrollWidth ≤ clientWidth | ✓ |
-| 5 | Narrow smoke: `h1` visible | 375×800 | "CTRFHub" | ✓ |
+| 1 | No console errors at narrow viewport | 375×800 | no errors (SSL noise filtered) | ✓ |
+| 2 | No horizontal overflow at narrow viewport | 375×800 | scrollWidth ≤ clientWidth | ✓ |
+| 3 | `h1` visible at narrow viewport | 375×800 | "CTRFHub" | ✓ |
+| 4 | Page title correct at narrow viewport | 375×800 | "CTRFHub" | ✓ |
+| 5 | No console errors at desktop viewport | 1280×800 | no errors (SSL noise filtered) | ✓ |
+| 6 | `<main>` visible with non-zero dimensions | 1280×800 | boundingBox non-null, width > 0, height > 0 | ✓ |
+| 7 | `h1` renders near top of `<main>` | 1280×800 | h1Box.y ≥ mainBox.y - 1 | ✓ |
+| 8 | Body has dark surface styling | 1280×800 | `bg-[...]` on `<html>`, `min-h-screen` on `<body>` | ✓ |
 
 ## Findings
 
 - None — visuals match expectations for a stub home page with Tailwind v4 dark surface styling.
 - At 375×800, no horizontal overflow detected.
 - At 1280×800, the `<main>` container is correctly positioned and the `h1` heading renders as expected.
+- Console errors filtered: 6× `ERR_SSL_PROTOCOL_ERROR` (environmental Chromium noise probing HTTPS on HTTP localhost — not application errors).
 
 ## Verdict
 
