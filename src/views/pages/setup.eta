@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-[--color-surface] text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1280">
+  <meta name="description" content="CTRFHub — Self-hosted test-reporting dashboard">
+  <title><%= it.title ?? "Setup — CTRFHub" %></title>
+  <link rel="stylesheet" href="/assets/tailwind.css">
+  <script src="/assets/htmx.min.js"></script>
+  <script src="/assets/idiomorph-ext.min.js"></script>
+  <script defer src="/assets/alpine.min.js"></script>
+  <script src="/assets/flowbite.min.js"></script>
+  <script type="module" src="/assets/app.js"></script>
+</head>
+<body hx-ext="morph" class="min-h-screen flex flex-col items-center justify-center px-4">
+  <div class="w-full max-w-2xl">
+    <div class="text-center mb-10">
+      <h1 class="text-3xl font-bold text-white tracking-tight">CTRFHub</h1>
+      <p class="mt-2 text-slate-400 text-sm">Self-hosted test-reporting dashboard</p>
+    </div>
+    <div id="setup-card" class="bg-[--color-surface-alt] border border-[--color-border] rounded-xl p-6 md:p-8 shadow-lg">
+      <%~ await includeFile('partials/setup-card.eta', it) %>
+    </div>
+  </div>
+</body>
+</html>

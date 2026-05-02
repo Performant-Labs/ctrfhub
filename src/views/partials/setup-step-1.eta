@@ -1,0 +1,83 @@
+<%/* Step 1 — Create admin account */%>
+<div x-data="setupStep1()">
+  <h2 class="text-xl font-semibold text-white mb-1">Create Admin Account</h2>
+  <p class="text-slate-400 text-sm mb-6">Set up your administrator credentials for CTRFHub.</p>
+
+  <form
+    hx-post="/setup/step/1"
+    hx-target="#setup-card"
+    hx-swap="morph:innerHTML"
+    @submit="submitting = true">
+    <div class="space-y-4">
+      <div>
+        <label for="displayName" class="block text-sm font-medium text-slate-300 mb-1">Display Name</label>
+        <input
+          type="text"
+          id="displayName"
+          name="displayName"
+          required
+          class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-[--color-brand] focus:ring-1 focus:ring-[--color-brand] outline-none transition-colors"
+          placeholder="Jane Doe">
+      </div>
+      <div>
+        <label for="email" class="block text-sm font-medium text-slate-300 mb-1">Email Address</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          required
+          class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-[--color-brand] focus:ring-1 focus:ring-[--color-brand] outline-none transition-colors"
+          placeholder="admin@example.com">
+      </div>
+      <div>
+        <label for="password" class="block text-sm font-medium text-slate-300 mb-1">Password</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          required
+          minlength="12"
+          x-model="password"
+          class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-[--color-brand] focus:ring-1 focus:ring-[--color-brand] outline-none transition-colors"
+          placeholder="Minimum 12 characters">
+        <div class="mt-2 space-y-1">
+          <div class="flex gap-1">
+            <template x-for="i in 4" :key="i">
+              <div class="h-1 flex-1 rounded-full transition-colors"
+                :class="{
+                  'bg-slate-600': strength < i,
+                  'bg-red-500': strength >= i && strength < 3,
+                  'bg-amber-500': strength >= i && strength === 3,
+                  'bg-green-500': strength >= i && strength >= 4
+                }">
+              </div>
+            </template>
+          </div>
+          <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500">
+            <span :class="password.length >= 12 ? 'text-green-400' : ''">12+ chars</span>
+            <span :class="/[A-Z]/.test(password) ? 'text-green-400' : ''">Uppercase</span>
+            <span :class="/[a-z]/.test(password) ? 'text-green-400' : ''">Lowercase</span>
+            <span :class="/[0-9]/.test(password) ? 'text-green-400' : ''">Digit</span>
+            <span :class="/[^A-Za-z0-9]/.test(password) ? 'text-green-400' : ''">Special</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6">
+      <button
+        type="submit"
+        :disabled="submitting || strength < 3"
+        class="w-full px-4 py-2.5 bg-[--color-brand] hover:bg-indigo-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors">
+        <span x-show="!submitting">Create Account</span>
+        <span x-show="submitting" class="inline-flex items-center gap-2">
+          <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          Creating...
+        </span>
+      </button>
+    </div>
+  </form>
+</div>

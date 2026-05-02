@@ -46,7 +46,7 @@ import fastifyMultipart from '@fastify/multipart';
 import type { AppOptions } from './types.js';
 import type { BootState } from './modules/health/schemas.js';
 import { HealthResponseSchema } from './modules/health/schemas.js';
-import { buildAuth } from './auth.js';
+import { buildAuth, type AuthInstance } from './auth.js';
 import { User } from './entities/index.js';
 import { registerAuthRoutes } from './modules/auth/routes.js';
 import ingestPlugin from './modules/ingest/routes.js';
@@ -55,6 +55,8 @@ import type { RunIngestedPayload } from './services/event-bus.js';
 import { createAiProvider } from './services/ai/index.js';
 import { LocalArtifactStorage } from './lib/local-artifact-storage.js';
 import { categorizeRun, recoverStalePipelineRows } from './services/ai/pipeline/index.js';
+import setupPlugin from './modules/setup/routes.js';
+import { SetupService } from './modules/setup/service.js';
 
 // ---------------------------------------------------------------------------
 // Module-private: resolve __dirname for ESM (needed by @fastify/static root)
@@ -99,6 +101,10 @@ declare module 'fastify' {
      * @see skills/eta-htmx-partial-rendering.md
      */
     page(template: string, data?: Record<string, unknown>): ReturnType<FastifyReply['view']>;
+  }
+  interface FastifyInstance {
+    /** Better Auth instance -- decorated so plugins can access it. */
+    auth: AuthInstance;
   }
 }
 
@@ -356,6 +362,21 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     app.log.error({ err }, 'Better Auth migration failed — process will exit');
     throw err;
   }
+
+  // Env-var seed: if CTRFHUB_INITIAL_ADMIN_* are set and users table empty,
+  // create admin user + org + (optional) project in one go so /setup is
+  // never shown. Runs after both ORM and Better Auth schema are ready.
+  try {
+    const setupService = new SetupService();
+    const seeded = await setupService.seedFromEnv(auth, orm);
+    if (seeded) {
+      app.log.info('Env-var seed completed — admin user, org, and project created');
+    }
+  } catch (err) {
+    app.log.error({ err }, 'Env-var seed failed — process will exit');
+    throw err;
+  }
+
   currentBootState = 'ready';
 
   // Register ORM cleanup on shutdown
@@ -630,6 +651,11 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   // 10d. Register CTRF ingest route plugin
   // -----------------------------------------------------------------------
   await app.register(ingestPlugin);
+
+  // -----------------------------------------------------------------------
+  // 10e. Register setup wizard route plugin (AUTH-002)
+  // -----------------------------------------------------------------------
+  await app.register(setupPlugin);
 
   // -----------------------------------------------------------------------
   // 11. Process signal handlers (production only — tests manage lifecycle)

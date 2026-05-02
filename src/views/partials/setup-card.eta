@@ -1,0 +1,6 @@
+<%/* Wizard card content — progress indicator + current step.
+     Rendered as HTMX swap target for POST responses. */%>
+<%~ await includeFile('partials/setup-header.eta', it) %>
+<div id="setup-step-content">
+  <%~ await includeFile(`partials/setup-step-${it.currentStep}.eta`, it) %>
+</div>

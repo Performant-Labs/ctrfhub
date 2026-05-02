@@ -1,0 +1,73 @@
+<%/* Step 3 — Create first project */%>
+<div x-data="setupStep3()">
+  <h2 class="text-xl font-semibold text-white mb-1">Create First Project</h2>
+  <p class="text-slate-400 text-sm mb-6">A project represents an application or test suite you want to track.</p>
+
+  <form
+    hx-post="/setup/step/3"
+    hx-target="#setup-card"
+    hx-swap="morph:innerHTML"
+    @submit="submitting = true">
+    <div class="space-y-4">
+      <div>
+        <label for="projectName" class="block text-sm font-medium text-slate-300 mb-1">Project Name</label>
+        <input
+          type="text"
+          id="projectName"
+          name="projectName"
+          required
+          x-model="projectName"
+          @input="slug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')"
+          class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-[--color-brand] focus:ring-1 focus:ring-[--color-brand] outline-none transition-colors"
+          placeholder="My App">
+      </div>
+      <div>
+        <label for="projectSlug" class="block text-sm font-medium text-slate-300 mb-1">URL Slug</label>
+        <input
+          type="text"
+          id="projectSlug"
+          name="projectSlug"
+          required
+          x-model="slug"
+          pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-[--color-brand] focus:ring-1 focus:ring-[--color-brand] outline-none transition-colors"
+          placeholder="my-app">
+        <p class="mt-1 text-xs text-slate-500">Lowercase letters, digits, and hyphens only</p>
+      </div>
+      <div>
+        <label for="description" class="block text-sm font-medium text-slate-300 mb-1">Description <span class="text-slate-500">(optional)</span></label>
+        <textarea
+          id="description"
+          name="description"
+          rows="3"
+          maxlength="2000"
+          class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:border-[--color-brand] focus:ring-1 focus:ring-[--color-brand] outline-none transition-colors resize-none"
+          placeholder="Describe what this project tests..."></textarea>
+      </div>
+    </div>
+
+    <div class="mt-6 flex gap-3">
+      <button
+        type="button"
+        hx-get="/setup"
+        hx-target="#setup-card"
+        hx-swap="morph:innerHTML"
+        class="px-4 py-2.5 border border-slate-600 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors">
+        Back
+      </button>
+      <button
+        type="submit"
+        :disabled="submitting || !projectName || !slug"
+        class="flex-1 px-4 py-2.5 bg-[--color-brand] hover:bg-indigo-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors">
+        <span x-show="!submitting">Create Project</span>
+        <span x-show="submitting" class="inline-flex items-center gap-2">
+          <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          Creating...
+        </span>
+      </button>
+    </div>
+  </form>
+</div>
