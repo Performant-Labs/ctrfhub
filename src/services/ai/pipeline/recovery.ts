@@ -57,21 +57,10 @@ export async function recoverStalePipelineRows(
   // Rows in 'running' status with a heartbeat older than 2 minutes
   // (or NULL heartbeat) are assumed to belong to a dead worker.
   // Reset them to 'pending' so they can be re-reserved.
-  //
-  // Uses CURRENT_TIMESTAMP arithmetic that works on both SQLite and PG:
-  // - SQLite: CURRENT_TIMESTAMP returns UTC string; datetime() for arithmetic
-  // - PG: CURRENT_TIMESTAMP returns timestamptz; interval arithmetic
-  //
-  // We use a CASE expression to handle both dialects in one query.
-  // Actually, both SQLite and PG support: heartbeat_at < datetime('now', '-120 seconds')
-  // is SQLite-only. PG uses: heartbeat_at < NOW() - INTERVAL '120 seconds'.
-  //
-  // Instead, we compute the threshold in JS and pass it as a string
-  // formatted to match SQLite's `CURRENT_TIMESTAMP` output format
-  // ('YYYY-MM-DD HH:MM:SS'). A raw JS Date object would be serialized
-  // with a 'T' separator by MikroORM, breaking SQLite's text-based
-  // date comparison. This format also works on PostgreSQL (implicitly
-  // cast to timestamptz).
+  // The threshold is computed in JS as a plain string in
+  // 'YYYY-MM-DD HH:MM:SS' format. This avoids the SQLite-only
+  // `datetime()` function and works on both SQLite (text comparison)
+  // and PostgreSQL (implicit cast to timestamptz).
   const staleThreshold = new Date(Date.now() - HEARTBEAT_STALE_SECONDS * 1000)
     .toISOString().replace('T', ' ').slice(0, 19);
 
@@ -81,7 +70,7 @@ export async function recoverStalePipelineRows(
          worker_id = NULL,
          heartbeat_at = NULL
      WHERE status = 'running'
-       AND (heartbeat_at IS NULL OR datetime(heartbeat_at) < datetime(?))`,
+       AND (heartbeat_at IS NULL OR heartbeat_at < ?)`,
     [staleThreshold],
   );
 

@@ -130,7 +130,7 @@ export function startSweeper(
              heartbeat_at = NULL
          WHERE status = 'running'
            AND attempt < 3
-           AND (heartbeat_at IS NULL OR datetime(heartbeat_at) < datetime(?))`,
+           AND (heartbeat_at IS NULL OR heartbeat_at < ?)`,
         [staleThreshold],
       );
 

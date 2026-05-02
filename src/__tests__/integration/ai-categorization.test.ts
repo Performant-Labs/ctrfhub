@@ -469,12 +469,16 @@ describe('AI-002 A1 Categorization — boot-time recovery', () => {
     });
     await em.flush();
 
-    // Seed a stale running row (heartbeat 5 minutes ago)
-    const staleTime = new Date(Date.now() - 5 * 60 * 1000);
+    // Seed a stale running row (heartbeat 5 minutes ago).
+    // Format heartbeat as 'YYYY-MM-DD HH:MM:SS' (matching
+    // CURRENT_TIMESTAMP output) so raw text comparison works
+    // without the SQLite-only datetime() function.
+    const staleTime = new Date(Date.now() - 5 * 60 * 1000)
+      .toISOString().replace('T', ' ').slice(0, 19);
     await orm.em.getConnection().execute(
       `INSERT INTO ai_pipeline_log (test_run_id, stage, status, worker_id, heartbeat_at, attempt)
        VALUES (?, 'categorize', 'running', 'dead-worker:1:0', ?, 1)`,
-      [run.id, staleTime.toISOString()],
+      [run.id, staleTime],
     );
 
     // Run recovery
