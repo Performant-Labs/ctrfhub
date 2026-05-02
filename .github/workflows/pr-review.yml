@@ -94,28 +94,28 @@ jobs:
       #   3. open a PR; PR-Agent reviews itself with the new SHA
       #   4. compare median wall-time / output quality before merge
       # SHA captured 2026-04-25 — qodo-ai/pr-agent main HEAD.
-      - name: PR-Agent review (default model — Kimi K2.6 Thinking via OpenRouter)
+      - name: PR-Agent review (default model — DeepSeek V4)
         id: review-default
-        # If the PR is labelled `high-stakes`, skip this step — the high-stakes step below handles it with Opus 4.6.
+        # If the PR is labelled `high-stakes`, skip this step — the high-stakes step below handles it with DeepSeek V4.
         if: ${{ !contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
         uses: qodo-ai/pr-agent@0e37fc84fcc8207561e64eef8f7f634fb57e8447  # was @main
         env:
-          # OPENROUTER__KEY (double underscore) maps to OPENROUTER.KEY in PR-Agent's Dynaconf
-          # settings, which is the only path that correctly wires litellm.api_key before the call.
-          # Using OPENROUTER_API_KEY alone sends DUMMY_LITELLM_API_KEY as the Bearer token.
-          OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # DEEPSEEK_API_KEY (double underscore) maps to DEEPSEEK.API_KEY in PR-Agent's Dynaconf
+          # settings, which wires litellm.api_key before the call.
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONFIG.MODEL: "deepseek/deepseek-chat"
 
-      - name: PR-Agent review — high-stakes (Opus 4.6)
+      - name: PR-Agent review — high-stakes (DeepSeek V4)
         id: review-highstakes
         # Triggered when the `high-stakes` label is present.
         if: ${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}
         uses: qodo-ai/pr-agent@0e37fc84fcc8207561e64eef8f7f634fb57e8447  # was @main
         env:
-          OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CONFIG.MODEL: "openrouter/anthropic/claude-opus-4.6"
-          CONFIG.FALLBACK_MODELS: '["openrouter/moonshotai/kimi-k2.6"]'
+          CONFIG.MODEL: "deepseek/deepseek-chat"
+          CONFIG.FALLBACK_MODELS: '["deepseek/deepseek-chat"]'
 
       - name: Apply score-bracket label from PR-Agent review
         # Parses the most recent PR-Agent comment for its Score field and
@@ -215,9 +215,9 @@ jobs:
 
           # Which model ran
           if [[ "${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}" == "true" ]]; then
-            MODEL='claude-opus-4.6'
+            MODEL='deepseek-chat'
           else
-            MODEL='kimi-k2.5'
+            MODEL='deepseek-chat'
           fi
 
           NOW_UTC=$(date -u '+%Y-%m-%d %H:%M UTC')
@@ -262,9 +262,9 @@ jobs:
 
           # Determine which model ran
           if [[ "${{ contains(github.event.pull_request.labels.*.name, 'high-stakes') }}" == "true" ]]; then
-            MODEL="openrouter/anthropic/claude-opus-4.6"
+            MODEL="deepseek/deepseek-chat"
           else
-            MODEL="openrouter/moonshotai/kimi-k2.5"
+            MODEL="deepseek/deepseek-chat"
           fi
 
           # Team-local timezone (auto-switches PDT↔PST) plus UTC for

@@ -1,29 +1,23 @@
 # PR-Agent configuration for CTRFHub
 #
 # Docs: https://qodo-merge-docs.qodo.ai/usage-guide/configuration_options/
-# Model IDs: https://openrouter.ai/models  ← verify before first run; update model/fallback fields if names have drifted
+# Model IDs: https://docs.litellm.ai/docs/providers/deepseek  ← verify before first run; update model/fallback fields if names have drifted
 #
-# Default model: Kimi K2.5 via OpenRouter (~$0.005–$0.02 per 200-line PR, ~30% faster than K2.6, comparable catch quality on the diff size we typically review).
-# Fallback: Opus 4.6 via OpenRouter (rate-limit / outage recovery).
-# Override per-PR: add the `high-stakes` label to force Opus 4.6 primary (see .github/workflows/pr-review.yml).
+# Default model: DeepSeek V4 via DeepSeek API.
+# Fallback: DeepSeek V4 (same model).
+# Override per-PR: add the `high-stakes` label to force DeepSeek V4 primary (see .github/workflows/pr-review.yml).
 
 [config]
-# Model IDs verified against https://openrouter.ai/api/v1/models 2026-04-25
-# Auth: OPENAI_API_KEY=<openrouter_key> + OPENAI_API_BASE=https://openrouter.ai/api/v1
-# Model names use vendor/model format (no openrouter/ prefix needed with API base override).
-# Kimi K2.5 (older generation than K2.6) — unversioned alias so we follow the K2.5
-# family forward without locking to a snapshot. We dropped from K2.6 -> K2.5 on
-# 2026-04-27 after observing PR-Agent runs on simple chore PRs taking 6+ minutes
-# (high latency variance on K2.6 with no measurable catch-rate improvement on the
-# diff sizes we typically review). Swap back to K2.6 if average review latency
-# becomes irrelevant or if K2.5 catch quality regresses.
-model = "openrouter/moonshotai/kimi-k2.5"
-fallback_models = ["openrouter/anthropic/claude-opus-4.6"]
+# Model IDs verified against LiteLLM DeepSeek provider docs 2026-05-02
+# Auth: DEEPSEEK_API_KEY in GitHub Actions secrets; LiteLLM natively routes deepseek/deepseek-chat.
+# DeepSeek V4 — LiteLLM routes natively.
+model = "deepseek/deepseek-chat"
+fallback_models = ["deepseek/deepseek-chat"]
 verbosity_level = 1
 # Don't truncate our skills/ context — reviews need the full spec context loaded
 max_description_tokens = 1500
 max_commits_tokens = 1500
-# Both models are newer than PR-Agent's internal MAX_TOKENS table — set explicitly.
+# DeepSeek V4 is newer than PR-Agent's internal MAX_TOKENS table — set explicitly.
 custom_model_max_tokens = 131072
 
 [pr_reviewer]
