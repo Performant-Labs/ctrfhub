@@ -1,0 +1,6 @@
+<div class="p-4 border border-red-800 rounded-lg bg-red-950 text-red-300" role="alert">
+  <p class="font-semibold"><%= it.title ?? "Something went wrong" %></p>
+  <% if (typeof it.message === 'string') { %>
+    <p class="mt-1 text-sm text-red-400"><%= it.message %></p>
+  <% } %>
+</div>

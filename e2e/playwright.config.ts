@@ -50,4 +50,14 @@ export default defineConfig({
 
   /* Timeout per test */
   timeout: 30_000,
+
+  /* Auto-start test server unless a base URL is explicitly provided */
+  webServer: process.env['CTRFHUB_E2E_BASE_URL']
+    ? undefined
+    : {
+        command: 'npx tsx e2e/test-server.ts',
+        cwd: '..',
+        port: 3000,
+        reuseExistingServer: true,
+      },
 });

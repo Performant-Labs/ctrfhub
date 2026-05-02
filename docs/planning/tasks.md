@@ -40,7 +40,7 @@ Status key:
 **Page verification tiers:** T1 Headless (`<meta viewport content="width=1280">` emitted, script load order in head), T2 ARIA (main landmark, nav landmark), T3 Visual (narrow-smoke at 375×800 — no horizontal scroll; 1280×800 baseline layout)
 **Critical test paths:** HTMX request returns partial (no `<html>`); direct nav returns full layout; no-horizontal-scroll assertion at narrow viewport; backdrop-contrast WCAG re-check gate wired for any future token change
 **Acceptance:** `src/assets/input.css` has correct `@import tailwindcss`, `@import flowbite`, `@source` directives, `@theme` block with all design tokens, `@layer components` with `.badge-pass/fail/skip/flaky`, `.run-card`, `.stat-tile`; `layouts/main.eta` has correct script load order (Tailwind → HTMX → idiomorph → Alpine → Flowbite → app.js), `<meta viewport content="width=1280">`, `hx-ext="morph"` on `<body>`; `reply.page()` decorator implemented (partial vs full-page branching on `HX-Request`); `npm run css:dev` watches without error; narrow-smoke test passes at 375×800.
-- [ ] INFRA-003
+- [x] INFRA-003
 
 ---
 

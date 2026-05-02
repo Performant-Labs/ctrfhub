@@ -84,6 +84,22 @@ declare module 'fastify' {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     em: any; // typed as `any` here; downstream handlers use the concrete fork type
   }
+  interface FastifyReply {
+    /**
+     * Render an Eta template with partial-vs-full-page branching.
+     *
+     * - When `HX-Request: true` header is present, renders `partials/{template}.eta`
+     *   (an HTMX swap fragment).
+     * - Otherwise renders `layouts/main.eta` with `{ body: template, ...data }`,
+     *   which in turn includes `pages/{template}.eta`.
+     *
+     * @param template - Template name (without `.eta` extension or directory prefix).
+     * @param data     - Template locals (available as `it` inside Eta templates).
+     *
+     * @see skills/eta-htmx-partial-rendering.md
+     */
+    page(template: string, data?: Record<string, unknown>): ReturnType<FastifyReply['view']>;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +246,44 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     root: path.join(__dirname, 'views'),
     viewExt: 'eta',
   });
+
+  /**
+   * `reply.page()` — partial-vs-full-page branching decorator.
+   *
+   * Routes that return HTML must use `reply.page(template, data)` instead of
+   * `reply.view()`. The decorator detects the `HX-Request` header:
+   *
+   * - **HTMX request** (`HX-Request: true`) → renders `partials/{template}.eta`
+   *   as a swap-ready HTML fragment (no `<html>`, `<head>`, or layout chrome).
+   * - **Direct navigation** (no `HX-Request`) → renders `layouts/main.eta` with
+   *   `{ body: template, ...data }`. The layout in turn includes
+   *   `pages/{template}.eta` via `includeAsync`.
+   *
+   * @see skills/eta-htmx-partial-rendering.md
+   * @see skills/fastify-route-convention.md §HTMX + View Integration
+   */
+  app.decorateReply('page', function (this: FastifyReply, template: string, data: Record<string, unknown> = {}) {
+    const isHxRequest = this.request.headers['hx-request'] === 'true';
+    if (isHxRequest) {
+      return this.view(`partials/${template}`, data);
+    }
+    return this.view('layouts/main', { body: template, ...data }, { async: true } as any);
+  });
+
+  // -----------------------------------------------------------------------
+  // 6b. GET / — home page
+  // -----------------------------------------------------------------------
+
+  /**
+   * Landing page — renders `pages/home.eta` inside the main layout.
+   *
+   * Uses `reply.page()` for HTMX partial-vs-full-page branching:
+   *   - Direct navigation → full layout with `layouts/main.eta`
+   *   - HTMX request → `partials/home.eta` fragment
+   */
+  app.get('/', {
+    schema: {},
+  }, async (_request, reply) => reply.page('home'));
 
   // -----------------------------------------------------------------------
   // 7. MikroORM lifecycle — init, per-request em fork, shutdown
@@ -476,6 +530,13 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     // No auth resolved. HTMX clients need a 200-with-HX-Redirect (NOT 401)
     // because HTMX only processes response headers on 2xx responses by default.
     // Browser clients get a standard 302 redirect.
+    //
+    // Guard against redirect loops: /login and /setup don't have auth-guarded
+    // routes yet (AUTH-003), so redirecting there would just loop forever.
+    if (rawPath === '/login' || rawPath === '/setup') {
+      return reply.status(404).send();
+    }
+
     if (request.headers['hx-request']) {
       reply.header('HX-Redirect', '/login');
       return reply.status(200).send();

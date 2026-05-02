@@ -8,17 +8,20 @@
  *
  * @see skills/htmx-4-forward-compat.md — Rule 2
  * @see docs/planning/project-plan.md §HTMX 4.0 Forward-Compatibility Rules
- *
- * TODO(INFRA-003+): Populate with actual event constants as HTMX-using
- * stories land (AUTH-002, DASH-001, etc.). Example entries:
- *
- *   export const HtmxEvents = {
- *     AFTER_SETTLE:   'htmx:afterSettle',
- *     AFTER_SWAP:     'htmx:afterSwap',
- *     BEFORE_REQUEST: 'htmx:beforeRequest',
- *     RESPONSE_ERROR: 'htmx:responseError',
- *     LOAD_START:     'htmx:xhr:loadstart',   // renamed htmx:fetch:loadstart in 4.0
- *     LOAD_END:       'htmx:xhr:loadend',       // renamed htmx:fetch:loadend in 4.0
- *   } as const;
  */
-export {};
+export const HtmxEvents = {
+  /** Fired after an HTMX swap has been settled (morph complete). */
+  AFTER_SETTLE:   'htmx:afterSettle',
+  /** Fired after new content has been swapped into the DOM. */
+  AFTER_SWAP:     'htmx:afterSwap',
+  /** Fired before an HTMX request is dispatched. */
+  BEFORE_REQUEST: 'htmx:beforeRequest',
+  /** Fired when an HTMX response has an error status. */
+  RESPONSE_ERROR: 'htmx:responseError',
+  /** Fired when an HTMX XHR load starts (renamed to htmx:fetch:loadstart in 4.0). */
+  LOAD_START:     'htmx:xhr:loadstart',
+  /** Fired when an HTMX XHR load ends (renamed to htmx:fetch:loadend in 4.0). */
+  LOAD_END:       'htmx:xhr:loadend',
+} as const;
+
+export type HtmxEvent = (typeof HtmxEvents)[keyof typeof HtmxEvents];
