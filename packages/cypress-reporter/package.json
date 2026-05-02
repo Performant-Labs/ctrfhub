@@ -1,0 +1,18 @@
+{
+  "name": "@ctrfhub/cypress-reporter",
+  "private": true,
+  "version": "0.0.0",
+  "description": "CTRFHub Cypress reporter — wraps cypress-ctrf-json-reporter and auto-posts results to CTRFHub",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "cypress-ctrf-json-reporter": "*",
+    "zod": "*"
+  },
+  "peerDependencies": {
+    "cypress": ">=13.0.0"
+  }
+}

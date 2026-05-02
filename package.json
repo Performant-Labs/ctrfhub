@@ -4,6 +4,7 @@
   "description": "CTRF-native self-hosted test reporting dashboard",
   "type": "module",
   "license": "MIT",
+  "workspaces": ["packages/*"],
   "engines": {
     "node": ">=22.0.0"
   },
