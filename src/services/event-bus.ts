@@ -54,6 +54,23 @@ export interface RunIngestedPayload {
   orgId: string;
 }
 
+/**
+ * Payload for downstream AI pipeline stage events.
+ *
+ * Used by `RUN_AI_CATEGORIZED`, `RUN_AI_CORRELATED`, and
+ * `RUN_AI_SUMMARIZED`. The `partial` flag indicates that an upstream
+ * stage terminally failed — downstream stages should run with
+ * degraded input.
+ */
+export interface AiStageEventPayload {
+  /** Auto-increment PK of the test run. */
+  runId: number;
+  /** Better Auth org ID (string PK on the `organization` table). */
+  orgId: string;
+  /** True if an upstream stage terminally failed. */
+  partial?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // EventBus interface
 // ---------------------------------------------------------------------------
