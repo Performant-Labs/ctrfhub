@@ -64,7 +64,6 @@ export function startSweeper(
   orm: MikroORM,
   eventBus: EventBus,
 ): () => void {
-  let running = true;
   let currentTick: Promise<void> | null = null;
 
   const tick = async () => {
@@ -159,7 +158,6 @@ export function startSweeper(
 
   // Return cleanup function for graceful shutdown
   return () => {
-    running = false;
     clearInterval(intervalId);
   };
 }
