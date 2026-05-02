@@ -86,7 +86,7 @@ Status key:
 **Page verification tiers:** T1 Headless (`/setup` returns 410 once users non-empty; non-`/setup` routes redirect when DB empty), T2 ARIA (progress indicator `role="progressbar"` or step heading hierarchy, every input labeled, Next/Back as `button`), T3 Visual (dark surface, Flowbite form components, 1280×800)
 **Critical test paths:** all four wizard steps functional; env-var seed path (`CTRFHUB_INITIAL_ADMIN_*`) produces same end state as web path; `/setup` returns 410 Gone after completion; crash-resumable (each step commits independently); backdrop-contrast check on any card/surface token edit
 **Acceptance:** All four wizard steps functional (`/setup`); env-var seed path functional (`CTRFHUB_INITIAL_ADMIN_*`); `/setup` returns `410 Gone` once users table non-empty; non-`/setup` routes redirect to `/setup` on empty DB; crash-resumable (each step commits independently); integration tests for all wizard paths (web, env-seed, 410 after completion); T2 ARIA: progress indicator, step headings, form labels; T3 visual: dark surface, correct Flowbite form components.
-- [ ] AUTH-002
+- [/] AUTH-002
 
 ---
 
@@ -213,7 +213,7 @@ Status key:
 **Page verification tiers:** none
 **Critical test paths:** pipeline chain order enforced — `categorize → correlate → summarize` (assert `ai_pipeline_log` row order); A2 subscribes to `run.ai_categorized`; A3 subscribes to `run.ai_correlated`; `ai_root_causes JSONB` / `ai_summary TEXT` columns populated; downstream stages run with `partial: true` if upstream stage terminally failed; stuck-stage sweeper at 60 s interval terminal-fails rows with `attempt ≥ 3`; no real LLM calls
 **Acceptance:** A2 subscribes to `run.ai_categorized`; A3 subscribes to `run.ai_correlated`; `ai_root_causes JSONB` and `ai_summary TEXT` columns on `test_runs`; pipeline chain order verified by integration test (`categorize → correlate → summarize` index assertions); stages run with `partial: true` if upstream stage failed; `MockAiProvider.correlateRootCauses` and `generateRunSummary` called; stuck-stage sweeper (60-second interval, terminal-fail at `attempt ≥ 3`).
-- [ ] AI-003
+- [/] AI-003
 
 ---
 
