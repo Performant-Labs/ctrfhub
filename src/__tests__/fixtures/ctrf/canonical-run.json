@@ -1,0 +1,28 @@
+{
+  "reportFormat": "CTRF",
+  "specVersion": "1.0.0",
+  "results": {
+    "tool": { "name": "vitest" },
+    "summary": {
+      "tests": 4,
+      "passed": 1,
+      "failed": 1,
+      "skipped": 1,
+      "pending": 1,
+      "other": 0,
+      "start": 1700000000000,
+      "stop": 1700000005000
+    },
+    "tests": [
+      { "name": "alpha-pass", "status": "passed", "duration": 100 },
+      { "name": "beta-fail", "status": "failed", "duration": 200, "message": "Expected true to be false" },
+      { "name": "gamma-skip", "status": "skipped", "duration": 0 },
+      { "name": "delta-pend", "status": "pending", "duration": 0 }
+    ],
+    "environment": {
+      "reportName": "Canonical Run",
+      "branchName": "main",
+      "commit": "abc123def456abc123def456abc123def456abc1"
+    }
+  }
+}
