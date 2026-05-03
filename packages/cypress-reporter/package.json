@@ -12,6 +12,9 @@
     "cypress-ctrf-json-reporter": "*",
     "zod": "*"
   },
+  "scripts": {
+    "test": "vitest run"
+  },
   "peerDependencies": {
     "cypress": ">=13.0.0"
   }
