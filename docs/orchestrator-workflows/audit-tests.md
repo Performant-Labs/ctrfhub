@@ -147,6 +147,8 @@ grep -rn "allow-same-origin" src/views/ --include="*.eta"
 
 ## Phase 4 — Coverage gap detection (Spec-enforcer)
 
+Coverage pressure in this phase is **bidirectional**. S reports both *missing* tests **and** *redundant* tests. File existence alone is not a positive signal — a test file stuffed with matrix fan-out is a finding, not a pass.
+
 For every file in `src/modules/*/routes.ts`, S checks for a corresponding integration test:
 
 ```bash
@@ -164,6 +166,25 @@ find src/__tests__/unit -name "*.test.ts" -print
 ```
 
 **Reports:** any utility file whose exports lack unit-test coverage.
+
+### 4a. Fan-out detection — the metric is tests-per-distinct-branch, NOT raw test count
+
+A high raw test count is **not** a positive signal. The audit metric is **tests per distinct code branch**: a test file that adds many tests for a feature that introduced few branches is matrix fan-out and is flagged as a `[block]` (over-coverage), exactly as a missing test file is flagged as a `[block]` (under-coverage). Coverage pressure runs in both directions — never reward file existence one-directionally.
+
+S scans for the fan-out smells:
+
+```bash
+# data-driven loops in test files — each is a candidate for branch-vs-value fan-out
+grep -rn "for *(.*of \|\.forEach(\|it\.each\|describe\.each" src/__tests__/ --include="*.test.ts"
+```
+
+For each match, S checks against `.claude/agents/test-writer.md §Test-sizing rule`:
+
+- **Loop over input strings sharing a code branch** → all iterations exercise the same conditional. This counts as **ONE test**, not N. A `for` loop fanning N paths × M assertions through a single prefix check (e.g. `startsWith('/assets/')`) is fan-out — flag it.
+- **4xx matrix (401 / 422 / 429 / 413) replicated across multiple paths or assets** → the matrix is a *per-route ceiling*, not a per-asset multiplier. A loop applying the matrix to several paths is fan-out — flag it.
+- **Assertions on an outcome the code cannot produce** (e.g. an `HX-Redirect` header asserted on a request an early `return` bypasses before that logic runs) → the test cannot fail in isolation; flag it as non-diagnostic.
+
+**Reports:** for each test file, the **tests-per-distinct-branch ratio** and any `for`/`each` loop that fans across values sharing a branch. A ratio noticeably above 1 is a `[block]` over-coverage finding with the offending loop cited — the remediation is to collapse the loop to one representative case plus one boundary/negative case.
 
 ---
 
@@ -225,7 +246,8 @@ S writes `.argos/audits/<auditId>/spec-audit-fullcodebase.md`. (The `<auditId>` 
 | TypeScript errors | <N> |
 | Test failures | <N> |
 | Architecture violations | <N> |
-| Coverage gaps | <N> |
+| Coverage gaps (under-coverage) | <N> |
+| Over-coverage / fan-out findings | <N> |
 | Planning non-conformance | <N> |
 | Skills violations | <N> |
 
@@ -250,6 +272,12 @@ Remediation: Import `HtmxEvents` from `./htmx-events` and replace the raw string
 File: `src/modules/settings/routes.ts`
 No corresponding file found in `src/__tests__/integration/settings.test.ts`.
 Remediation: Test-writer must create integration tests covering all settings routes.
+
+### [block] Over-coverage — matrix fan-out
+File: `src/__tests__/integration/static-asset-auth-bypass.test.ts:30`
+Rule: `.claude/agents/test-writer.md §Test-sizing rule`
+Found: `for (const path of ALL_ASSET_PATHS)` fanning 6 asset paths × 3 assertions (18 tests) through a single `startsWith('/assets/')` prefix check; tests-per-distinct-branch ratio ≈ 18:1.
+Remediation: Collapse the loop to one representative asset path plus one boundary case (`/assetsx`) and one negative case (a non-asset path). One test per distinct branch — not one per data value sharing a branch.
 
 ### [info] TypeScript strict error
 File: `src/modules/ingest/service.ts:87`
@@ -294,7 +322,7 @@ SQLite migrations: <M>
 | 1 TypeScript baseline | Argos (Bash) | `tsc --noEmit` | error count + log |
 | 2 Test snapshot | Argos (Bash) | `npm run test`, `npm run test:coverage` | pass/fail counts + coverage |
 | 3 Architecture rule scan | S | grep patterns | findings (architecture rules) |
-| 4 Coverage gaps | S | `find` + diff against `src/__tests__/` | findings (missing tests) |
+| 4 Coverage gaps | S | `find` + diff against `src/__tests__/`; `grep` for fan-out loops | findings (missing tests **and** over-coverage / fan-out, scored as tests-per-distinct-branch) |
 | 5 Planning conformance | S | targeted grep against canonical endpoints | findings (planning drift) |
 | 6 Drift report | S | all of the above | `spec-audit-fullcodebase.md` |
 

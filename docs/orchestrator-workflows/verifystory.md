@@ -151,6 +151,14 @@ npm run test:coverage
 
 If thresholds fail, T identifies which uncovered lines belong to the story and reports them — but does not write tests (this is re-verification, not implementation). If gaps exist, Argos surfaces to André.
 
+### Pre-handoff self-check (mandatory before any `test-handoff.md` / re-verify handoff)
+
+Whenever T authors or re-derives tests in this workflow, T runs a **pre-handoff self-check before emitting its handoff**: for every new test, answer —
+
+> **"Would this test fail in isolation if the code were wrong?"**
+
+If the answer is **"no — it only fails if another test would also fail"** (the test duplicates a sibling's signal, asserts an unreachable outcome, or re-proves a branch already covered elsewhere), **T deletes the test.** This applies the test-sizing rule in `.claude/agents/test-writer.md §Test-sizing rule`: one test per distinct branch, the 4xx matrix as a per-route ceiling, and loops over inputs sharing a branch counted as one test. T records the self-check outcome (tests deleted, or "none deleted") in its handoff.
+
 ---
 
 ## Phase F — Re-verification report (Argos)
