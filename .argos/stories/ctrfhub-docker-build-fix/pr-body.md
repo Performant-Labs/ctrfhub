@@ -58,7 +58,8 @@ deviate from spec" for why the build is verified directly rather than via
 
 ## Spec-enforcer verdict
 
-_Pending — `spec-audit-1.md` written at Phase 6.2; this section is updated to the final verdict before PR creation._
+**PASS** — see `.argos/stories/ctrfhub-docker-build-fix/spec-audit-1.md` (M=1)
+**Date:** 2026-05-17
 
 ## Next assignable stories (after this merges)
 
