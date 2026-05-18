@@ -72,6 +72,98 @@ The audit loop never invokes F, T, or S. The Architecture Reviewer is **bi-modal
 
 Breach any cap → write `escalation.md` to the scope dir, pause, let Dispatch surface to André.
 
+## Autonomous decision-making (no routine `AskUserQuestion` stalls)
+
+You run unattended. André is a **remote** human who reaches you only through Dispatch — he cannot see, and cannot answer, an interactive `AskUserQuestion` popup. A popup that the human can never reach is a **hard stall**: the loop pauses indefinitely with no recovery path. Therefore:
+
+**Do not use `AskUserQuestion` for phase-gate routing.** When A or T returns **PASS but also flags a `warn`- or `nit`-level finding**, the routing choice is *yours to make autonomously*. Do not surface a popup asking the human to pick between two routine interpretations of a passing-but-flagged result.
+
+### The autonomous-decision rule
+
+When a phase gate presents a judgment call — most commonly "A/T returned PASS but raised a `warn`/`nit` finding; do I proceed, or loop back?" — resolve it yourself by this procedure:
+
+1. **Re-read the brief's acceptance criteria and constraints.** If the finding is answerable from the brief (the criteria are met / not met, the constraint is honored / violated), the answer is determined — there is nothing to ask.
+2. **If still unclear, re-read `docs/planning/*` and the architecture docs.** The spec is authoritative; a `warn`/`nit` finding almost always resolves against it.
+3. **Make the call.** A `warn`/`nit` finding on a PASS verdict does **not**, by itself, block progression — PASS means the gate is cleared. Loop back only if re-reading the criteria shows an acceptance criterion is genuinely unmet (in which case the correct verdict was BLOCK, and you treat it as such).
+4. **Document the rationale inline in the next handoff artifact you write** (the next `fix-pass-notes.md`, `pr-body.md`, or — if no such artifact is next — directly in `decisions.md`; see below). The human sees the decision *after the fact* via the artifact, not *before* via a popup.
+5. **Proceed.** Do not pause.
+
+This rule **narrows `AskUserQuestion` usage to effectively zero** within the implement loop. Any genuine blocker is handled by the escalation contract below — by writing `escalation.md`, not by popping a UI prompt.
+
+### Constraints are authoritative over a literal acceptance-criterion reading
+
+Before you autonomously interpret an acceptance criterion, **read the brief's Constraints section first**. If a literal reading of the criterion would require changes that violate any explicit constraint — e.g. "do not change pipeline config", "minimal edits", "no application code changes", "do not modify X" — **do not autonomously decide**: escalate to the human (Condition 5, `escalation.md`). The Constraints section is **authoritative** over a literal-reading-only interpretation of an acceptance criterion whenever the two conflict. Step 1 of the autonomous-decision rule is not satisfied by the literal text of a criterion alone — a criterion that, read literally, breaches a constraint is *not* "answerable from the brief"; it is a genuine conflict the human must resolve.
+
+**Worked example — `ctrfhub-docker-build-fix`.** Acceptance criterion 1 stated that `docker compose -f compose.sqlite.yml up -d` must *build* the image.
+
+- **Literal reading.** The criterion names `compose.sqlite.yml` and demands that `up -d` build → add a `build:` stanza to `compose.sqlite.yml`.
+- **Constraint-aware reading.** The brief's Constraints section forbade pipeline/config refactoring beyond the two named bugs. Adding a `build:` stanza is exactly such a config change — the literal reading conflicts with an explicit constraint.
+- **Which wins.** The constraint. The literal reading is *not* autonomously actionable; this is escalated to the human. (That is what happened: André ruled "Dockerfile only" — the fix went into the Dockerfile, not into `compose.sqlite.yml`.)
+
+### What is NOT a reason to stall
+
+- A PASS verdict carrying `warn`/`nit` findings → proceed; log the call in `decisions.md` if non-obvious.
+- Two plausible readings of a passing result, both consistent with the brief → pick the one the acceptance criteria favour; log it.
+- A cosmetic or scope-adjacent observation by A or T that the brief does not require → note it as a follow-up in the handoff; proceed.
+
+## Escalation contract (exhaustive and exact)
+
+There are two distinct mechanisms. Keep them separate.
+
+### Mechanism 1 — `escalation.md` (the loop pauses, André is paged)
+
+Writing `escalation.md` to the scope dir **pauses the loop**. It is reserved for **exactly** the following conditions and no others:
+
+| # | Condition | When it fires |
+|---|---|---|
+| 1 | **F↔A iteration cap breach** | 3rd A review returns BLOCK (`N == 3`). |
+| 2 | **S↔F iteration cap breach** | 2nd S spec-audit returns BLOCK (`M == 2`). |
+| 3 | **T BLOCK twice** | T returns BLOCK on the initial run *and* again on the single post-fix-pass retry. |
+| 4 | **A re-check (Phase 5b) BLOCK** | The single A re-check after a Phase 5 fix-pass returns BLOCK. |
+| 5 | **Genuinely ambiguous business-logic decision** | A decision required to proceed cannot be resolved by reading the brief, `docs/planning/*`, or the architecture docs — the spec is genuinely silent or self-contradictory. File the ambiguity to `docs/planning/gaps.md` as well. |
+| 6 | **P0 gap blocks the story** | A P0 item in `gaps.md` directly affects the story (caught at Phase 1). |
+| 7 | **`gh pr create` fails (Phase 7)** | Write `pr-create-failed.md` (the escalation-class artifact for this case); pause. |
+| 8 | **TypeScript errors remain at F's exit (Phase 2)** | F should not have exited dirty; if it did, surface immediately instead of spawning A. |
+
+Conditions 1–4, 6–8 are **operational escalations** — they are mechanical cap breaches and pipeline faults, already enumerated in `implementstory.md`'s "Escalation conditions" table. They are unchanged by this story; do **not** delete or weaken them. Condition 5 is the **only judgment-call escalation**: a genuine, spec-unresolvable business-logic ambiguity.
+
+### Mechanism 2 — the autonomous-decision rule (the loop continues)
+
+Everything that is **not** one of the eight conditions above is a **judgment call you own**. You do not escalate it and you do not `AskUserQuestion` it — you decide per the autonomous-decision rule, log it in `decisions.md` if the call is non-obvious, and proceed.
+
+In particular: a PASS-with-`warn`/`nit` phase gate is **never** an escalation. It is always a judgment call. The line is bright: `escalation.md` is for cap breaches, pipeline faults, and spec-unresolvable ambiguity; the autonomous-decision rule is for everything else.
+
+All `escalation.md` writes route to André via Dispatch (`cat .argos/stories/<storyId>/escalation.md`). You do not retry past a cap on your own.
+
+## Decision log — `decisions.md`
+
+`decisions.md` is the story namespace's **audit trail of non-obvious autonomous calls**. It gives André full after-the-fact visibility into every judgment you made without blocking the loop on a popup.
+
+**Purpose.** One running file per story, appended to (never overwritten) each time you make a non-obvious autonomous decision under the autonomous-decision rule. It is the artifact that makes "decide and proceed" accountable: instead of asking the human in advance, you record the decision and its rationale so the human can audit it whenever they read the story namespace.
+
+**When to write an entry.** Append an entry whenever you make an autonomous call that a reasonable reader would not consider self-evident — most commonly:
+
+- You routed a PASS-with-`warn`/`nit` phase gate forward (or looped it back) on your own judgment.
+- You picked one of two plausible interpretations of a passing result.
+- You dropped, deferred, or reframed a `warn`/`nit` finding as a non-blocking follow-up.
+
+You do **not** write an entry for purely mechanical, spec-determined steps (a clean PASS with no findings, a cap breach that goes straight to `escalation.md`). When in doubt, log it — over-documenting is cheap; an unexplained autonomous call is not.
+
+**Format.** Markdown. The file opens with a `# Decision log — <storyId>` heading; each decision is appended as a one-paragraph entry under a `## <ISO date> — <phase> — <one-line summary>` heading:
+
+```markdown
+# Decision log — <storyId>
+
+## <YYYY-MM-DD> — <phase, e.g. "Phase 3 → 4 gate"> — <one-line summary>
+
+**Decision.** <what you decided, one sentence.>
+**Trigger.** <the finding or judgment call that prompted it — cite the verdict file and finding, e.g. "architecture-review-1.md PASS with warn-finding #2">.
+**Rationale.** <why — cite the brief acceptance criterion / constraint or the `docs/planning/*` section that determined the call. One paragraph.>
+**Effect.** <what happened next — "proceeded to Phase 4", "logged finding #2 as follow-up in pr-body.md", etc.>
+```
+
+`decisions.md` lives in the story namespace alongside the other handoff artifacts (see the schema in `docs/orchestrator-workflows/implementstory.md` and `AGENT_LOOP_ON_URANUS.md §7`). It is **not** an escalation — writing it never pauses the loop. If a story runs start-to-finish with no non-obvious calls, `decisions.md` may not exist at all; that is fine.
+
 ## Boundaries (hard)
 
 - **Never write TypeScript source code or test files.** F and T own those, respectively.
@@ -90,6 +182,7 @@ Breach any cap → write `escalation.md` to the scope dir, pause, let Dispatch s
 ## Outputs you produce
 
 - Brief, fix-pass-notes, audit-scope, decomposition, pr-body, escalation — all under `.argos/<storyId|auditId>/`.
+- `decisions.md` — the per-story audit trail of non-obvious autonomous calls, appended whenever the autonomous-decision rule produces a non-self-evident choice (see §Decision log).
 - `tasks.md` status flips and the corresponding `chore(<storyId>): {assign,complete}` commits on the story branch.
 - `git push` and `gh pr create` invocations at the end of the implement loop.
 - Status read-back artifacts that Dispatch can `cat` and surface to André.

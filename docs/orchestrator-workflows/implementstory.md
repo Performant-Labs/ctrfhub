@@ -380,25 +380,80 @@ _Generated from `.argos/stories/<storyId>/pr-body.md`. If you edit the PR descri
 ├── screenshots/                      ← Phase 4 (T, UI stories only)
 ├── test-handoff.md                   ← Phase 4 (T)
 ├── fix-pass-notes.md                 ← Phase 5 (Argos, T BLOCK only)
+├── decisions.md                      ← any phase (Argos, appended; non-obvious autonomous calls — optional)
 ├── pr-body.md                        ← Phase 6.1 (Argos)
 ├── spec-audit-1.md                   ← Phase 6.2 (S)
 ├── spec-audit-2.md                   ← Phase 6b → 6.2 iter 2 (optional)
-└── escalation.md                     ← any cap breach
+└── escalation.md                     ← reserved-conditions escalation only (see Escalation conditions)
 ```
+
+`decisions.md` is the story's audit trail of non-obvious **autonomous** calls Argos
+made instead of pausing on an interactive prompt. Argos appends a one-paragraph
+entry whenever the autonomous-decision rule (below) produces a choice a reasonable
+reader would not consider self-evident. It is **not** an escalation — writing it
+never pauses the loop, and a story with no non-obvious calls may have no
+`decisions.md` at all. Purpose, format, and write-triggers are defined in
+`.claude/agents/orchestrator.md §Decision log`.
 
 ---
 
+## Autonomous phase-gate routing (no interactive prompts)
+
+Argos runs unattended; André is reachable only through Dispatch and cannot answer
+an interactive `AskUserQuestion` popup. **Argos must not surface a popup to route a
+phase gate.** Specifically, when A (Phase 3 / 5b) or T (Phase 4) returns **PASS but
+also flags a `warn`- or `nit`-level finding**, the routing choice is Argos's to make
+autonomously:
+
+1. PASS clears the gate. A `warn`/`nit` finding on a PASS verdict does **not** by
+   itself block progression.
+2. If the finding raises a real question, Argos resolves it by re-reading the
+   brief's acceptance criteria and constraints, then `docs/planning/*` and the
+   architecture docs. If those show an acceptance criterion is genuinely unmet, the
+   correct verdict was BLOCK and Argos routes the loop back accordingly.
+3. Before autonomously interpreting an acceptance criterion, Argos checks the
+   brief's Constraints section. If a literal reading of the criterion would require
+   changes that violate any explicit constraint (e.g. "do not change pipeline
+   config", "minimal edits", "no application code changes", "do not modify X"),
+   Argos escalates to the human rather than autonomously deciding. The Constraints
+   section is authoritative over a literal-reading-only interpretation of an
+   acceptance criterion when the two conflict.
+4. Argos documents any non-obvious call inline in the next handoff artifact it
+   writes, and appends an entry to `decisions.md`.
+5. Argos proceeds — it does not pause.
+
+The full rule, including the `decisions.md` format, lives in
+`.claude/agents/orchestrator.md §Autonomous decision-making` and `§Decision log`.
+A PASS-with-`warn`/`nit` gate is **never** an escalation; it is always a judgment
+call Argos owns.
+
 ## Escalation conditions
 
-| Condition | Action |
+`escalation.md` (writing it **pauses the loop**) is reserved for **exactly** the
+conditions below — operational cap breaches / pipeline faults plus one judgment-call
+condition. Anything not in this table is a judgment call Argos owns and resolves via
+the autonomous-decision rule above; it is **not** escalated and **not** surfaced as
+an interactive prompt.
+
+| Condition | Class | Action |
+|---|---|---|
+| P0 gap in `gaps.md` blocks this story | operational | Halt at Phase 1. Surface to André via Dispatch. |
+| F↔A cap breach (3rd A BLOCK) | operational | Argos writes `escalation.md` referencing all three reviews. Pause. |
+| T BLOCK twice (initial + retry after fix-pass) | operational | Argos writes `escalation.md` quoting both `test-handoff.md` versions. Pause. |
+| A re-check (Phase 5b) BLOCK | operational | Argos writes `escalation.md` quoting `architecture-review-fix.md`. Pause. |
+| S↔F cap breach (2nd S BLOCK) | operational | Argos writes `escalation.md` quoting both `spec-audit-*.md` and F's spec-remediation handoff section. Pause. |
+| `gh pr create` fails at Phase 7 | operational | Argos writes `pr-create-failed.md`. Pause. |
+| TypeScript errors remain at F's exit (Phase 2) | operational | F should not have exited; if it did, Argos surfaces this immediately rather than spawning A. |
+| Genuinely ambiguous business-logic decision, unresolvable from the brief, `docs/planning/*`, or the architecture docs | judgment | Argos writes `escalation.md` describing the ambiguity and also files it to `docs/planning/gaps.md`. Pause. |
+
+The seven operational rows are mechanical cap breaches and pipeline faults — they
+are unchanged by the autonomy rule and must not be removed or weakened. The single
+judgment row is the **only** escalation Argos raises on a judgment call: a genuine,
+spec-unresolvable ambiguity. A non-escalation reminder for contrast:
+
+| Non-condition (does NOT escalate) | What Argos does instead |
 |---|---|
-| P0 gap in `gaps.md` blocks this story | Halt at Phase 1. Surface to André via Dispatch. |
-| F↔A cap breach (3rd A BLOCK) | Argos writes `escalation.md` referencing all three reviews. Pause. |
-| T BLOCK twice (initial + retry after fix-pass) | Argos writes `escalation.md` quoting both `test-handoff.md` versions. Pause. |
-| A re-check (Phase 5b) BLOCK | Argos writes `escalation.md` quoting `architecture-review-fix.md`. Pause. |
-| S↔F cap breach (2nd S BLOCK) | Argos writes `escalation.md` quoting both `spec-audit-*.md` and F's spec-remediation handoff section. Pause. |
+| A or T returns PASS with `warn`/`nit` findings | Proceed; log a non-obvious call in `decisions.md`. |
 | F regresses A or T during spec-remediation | PR-Agent in CI catches it after Phase 7. Promote light → full re-run only if this becomes a real-world failure class. |
-| `gh pr create` fails at Phase 7 | Argos writes `pr-create-failed.md`. Pause. |
-| TypeScript errors remain at F's exit (Phase 2) | F should not have exited; if it did, Argos surfaces this immediately rather than spawning A. |
 
 All escalations route to André via Dispatch (`cat .argos/stories/<storyId>/escalation.md`). Argos does not retry past the cap on its own.

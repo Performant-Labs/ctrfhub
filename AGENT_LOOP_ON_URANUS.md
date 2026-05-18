@@ -462,10 +462,11 @@ That's the entire artifact set. The audit loop is meant to be small and inspecta
 │       ├── screenshots/                   (UI stories only)
 │       ├── test-handoff.md
 │       ├── fix-pass-notes.md              (Phase 5 only)
+│       ├── decisions.md                   (autonomous-decision audit trail; optional)
 │       ├── pr-body.md
 │       ├── spec-audit-1.md
 │       ├── spec-audit-2.md                (S↔F iter 2)
-│       └── escalation.md                  (failure only)
+│       └── escalation.md                  (reserved-conditions escalation only)
 └── audits/
     └── <auditId>/        ← audit loop
         ├── audit-scope.md
@@ -489,9 +490,12 @@ That's the entire artifact set. The audit loop is meant to be small and inspecta
 | `tier-3-report.md` + `screenshots/` | T | O | Phase 4 — UI stories only |
 | `test-handoff.md` | T | O (gating), F (Phase 5 input via fix-pass-notes) | Phase 4 |
 | `fix-pass-notes.md` | O | F | Phase 5 only |
+| `decisions.md` | O (appended) | André (via Dispatch), O (later phases) | Any phase — appended whenever the autonomous-decision rule produces a non-obvious call; optional (a story with none may omit the file) |
 | `pr-body.md` | O | `gh pr create --body-file`, PR-Agent, S | Phase 6 |
 | `spec-audit-<M>.md` (M = 1, 2) | S | O (gating), F (iter M+1 input) | Phase 6 — one file per iteration |
-| `escalation.md` | O | André (via Dispatch) | F↔A cap breach, T 2nd BLOCK, A re-check BLOCK, or S↔F 2nd BLOCK |
+| `escalation.md` | O | André (via Dispatch) | F↔A cap breach, T 2nd BLOCK, A re-check BLOCK, S↔F 2nd BLOCK, `gh pr create` failure, P0 gap, or a genuinely spec-unresolvable business-logic ambiguity — see `implementstory.md` "Escalation conditions" |
+
+`decisions.md` and `escalation.md` are deliberately separate. `escalation.md` is a **pause** signal — Argos writes it only for the bounded set of cap breaches, pipeline faults, and spec-unresolvable ambiguities enumerated in `implementstory.md`'s "Escalation conditions" table, and the loop stops until André intervenes. `decisions.md` is a **non-pausing** audit trail — Argos appends to it whenever the autonomous-decision rule (`.claude/agents/orchestrator.md §Autonomous decision-making`) produces a non-obvious call, so a `warn`/`nit` finding on a PASS verdict is recorded and proceeded past rather than stalled on an interactive prompt the remote human cannot answer. The format and write-triggers for `decisions.md` are defined in `.claude/agents/orchestrator.md §Decision log`.
 
 ### Audit-loop schema
 
