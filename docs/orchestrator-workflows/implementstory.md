@@ -411,9 +411,16 @@ autonomously:
    brief's acceptance criteria and constraints, then `docs/planning/*` and the
    architecture docs. If those show an acceptance criterion is genuinely unmet, the
    correct verdict was BLOCK and Argos routes the loop back accordingly.
-3. Argos documents any non-obvious call inline in the next handoff artifact it
+3. Before autonomously interpreting an acceptance criterion, Argos checks the
+   brief's Constraints section. If a literal reading of the criterion would require
+   changes that violate any explicit constraint (e.g. "do not change pipeline
+   config", "minimal edits", "no application code changes", "do not modify X"),
+   Argos escalates to the human rather than autonomously deciding. The Constraints
+   section is authoritative over a literal-reading-only interpretation of an
+   acceptance criterion when the two conflict.
+4. Argos documents any non-obvious call inline in the next handoff artifact it
    writes, and appends an entry to `decisions.md`.
-4. Argos proceeds — it does not pause.
+5. Argos proceeds — it does not pause.
 
 The full rule, including the `decisions.md` format, lives in
 `.claude/agents/orchestrator.md §Autonomous decision-making` and `§Decision log`.

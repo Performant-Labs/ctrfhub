@@ -90,6 +90,16 @@ When a phase gate presents a judgment call — most commonly "A/T returned PASS 
 
 This rule **narrows `AskUserQuestion` usage to effectively zero** within the implement loop. Any genuine blocker is handled by the escalation contract below — by writing `escalation.md`, not by popping a UI prompt.
 
+### Constraints are authoritative over a literal acceptance-criterion reading
+
+Before you autonomously interpret an acceptance criterion, **read the brief's Constraints section first**. If a literal reading of the criterion would require changes that violate any explicit constraint — e.g. "do not change pipeline config", "minimal edits", "no application code changes", "do not modify X" — **do not autonomously decide**: escalate to the human (Condition 5, `escalation.md`). The Constraints section is **authoritative** over a literal-reading-only interpretation of an acceptance criterion whenever the two conflict. Step 1 of the autonomous-decision rule is not satisfied by the literal text of a criterion alone — a criterion that, read literally, breaches a constraint is *not* "answerable from the brief"; it is a genuine conflict the human must resolve.
+
+**Worked example — `ctrfhub-docker-build-fix`.** Acceptance criterion 1 stated that `docker compose -f compose.sqlite.yml up -d` must *build* the image.
+
+- **Literal reading.** The criterion names `compose.sqlite.yml` and demands that `up -d` build → add a `build:` stanza to `compose.sqlite.yml`.
+- **Constraint-aware reading.** The brief's Constraints section forbade pipeline/config refactoring beyond the two named bugs. Adding a `build:` stanza is exactly such a config change — the literal reading conflicts with an explicit constraint.
+- **Which wins.** The constraint. The literal reading is *not* autonomously actionable; this is escalated to the human. (That is what happened: André ruled "Dockerfile only" — the fix went into the Dockerfile, not into `compose.sqlite.yml`.)
+
 ### What is NOT a reason to stall
 
 - A PASS verdict carrying `warn`/`nit` findings → proceed; log the call in `decisions.md` if non-obvious.
