@@ -23,14 +23,15 @@ RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
-# Copy package manifests first for layer-cache efficiency
-COPY package.json package-lock.json ./
-
-# Install all dependencies (including devDeps for tsc, tailwind CLI, etc.)
-RUN npm ci
-
-# Copy the rest of the source tree
+# Copy the full source tree BEFORE `npm ci`.
+# `npm ci` triggers the `postinstall` hook (scripts/copy-vendor-assets.mjs),
+# which needs scripts/ and src/client/ present — so sources must already
+# be in the image when install runs.
 COPY . .
+
+# Install all dependencies (including devDeps for tsc, tailwind CLI, etc.).
+# The postinstall hook vendors client JS into src/assets/.
+RUN npm ci
 
 # 1. Compile TypeScript → dist/
 RUN npx tsc
@@ -42,6 +43,12 @@ RUN mkdir -p dist/assets && \
       -i src/assets/input.css \
       -o dist/assets/tailwind.css \
       --minify
+
+# 3. Bridge vendored client assets into dist/assets/.
+#    postinstall (copy-vendor-assets.mjs) writes vendored JS into src/assets/,
+#    but production serves static assets from dist/assets/ (src/app.ts §5).
+#    Copy them across so htmx/alpine/flowbite/app.js resolve at runtime.
+RUN cp -r src/assets/. dist/assets/
 
 # ---------------------------------------------------------------------------
 # Stage 2 — runner
@@ -60,8 +67,16 @@ COPY package.json package-lock.json ./
 # Install production-only deps.
 # This re-compiles better-sqlite3 native bindings for the runner image.
 # Using the same alpine version as builder ensures ABI compatibility.
+#
+# --ignore-scripts: the `postinstall` hook (copy-vendor-assets.mjs) is a
+# build-time step that needs scripts/ + src/client/ + esbuild (a devDep),
+# none of which exist in the runner stage. The vendored assets it produces
+# are already baked into dist/assets/ by the builder, so the runner must
+# skip it. better-sqlite3's own install scripts run via the explicit
+# `npm rebuild` below.
 RUN apk add --no-cache python3 make g++ && \
-    npm ci --omit=dev && \
+    npm ci --omit=dev --ignore-scripts && \
+    npm rebuild better-sqlite3 && \
     apk del python3 make g++
 
 # Copy the compiled application from the builder stage
