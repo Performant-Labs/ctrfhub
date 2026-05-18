@@ -131,8 +131,13 @@ dist
 
 # Claude Code per-workspace local state — per-developer settings/scratchpad,
 # never committed (distinct from .claude-bridge/ further down, which is the
-# sandbox↔Mac protocol spool used by Argos)
-.claude/
+# sandbox↔Mac protocol spool used by Argos).
+# Carve-outs: .claude/agents/ and .claude/commands/ hold shared subagent and
+# slash-command definitions that MUST travel with the repo (a fresh clone
+# needs them for the agent loop to work).
+.claude/*
+!.claude/agents/
+!.claude/commands/
 
 # yarn v3
 .pnp.*
@@ -153,6 +158,9 @@ vite.config.ts.timestamp-*
 
 # Claude bridge spool — per-protocol (see docs/ai_guidance/agent/claude-bridge.md)
 .claude-bridge/
+
+# Local prep/working notes — not committed
+PAUSE_REASON.md
 
 # NOTE: .argos/ is intentionally tracked (NOT ignored). Briefs, handoffs,
 # spec-audits, tier reports, and PR bodies travel with the story branch
