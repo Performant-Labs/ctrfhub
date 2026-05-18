@@ -48,6 +48,7 @@ confirmed the existing suite is unchanged: `npm test` → 498 tests pass,
 | # | Verdict | File |
 |---|---|---|
 | 1 | PASS | `.argos/stories/orchestrator-autonomy-hardening/architecture-review-1.md` |
+| fix | PASS | `.argos/stories/orchestrator-autonomy-hardening/architecture-review-fix.md` (post-PR clarification re-check) |
 
 ## Decisions that deviate from spec
 
@@ -63,6 +64,38 @@ confirmed the existing suite is unchanged: `npm test` → 498 tests pass,
 
 **PASS** — see `.argos/stories/orchestrator-autonomy-hardening/spec-audit-1.md` (M=1)
 **Date:** 2026-05-17
+
+## Post-A clarification (post-PR fix-pass)
+
+After PR #73 was opened, André identified a gap in the new autonomy rule:
+applied to the real `ctrfhub-docker-build-fix` `compose.sqlite.yml`
+warn-finding, the rule's "Argos decides when the finding is answerable by
+re-reading the brief" clause would have produced the *literal* acceptance-
+criterion reading (add a `build:` stanza) — the **opposite** of André's actual
+ruling ("Dockerfile only"). The literal reading was answerable from the
+brief, but it violated the brief's Constraints section (no pipeline/config
+refactoring).
+
+A focused fix-pass (commit `docs(...): constraints override literal
+acceptance reading on conflict`) addresses this:
+
+- `.claude/agents/orchestrator.md` — new clause in `§Autonomous
+  decision-making`: before autonomously interpreting an acceptance criterion,
+  check the brief's Constraints section; if a literal reading would require
+  changes that violate any explicit constraint, **escalate** rather than
+  decide. The Constraints section is authoritative over a literal-reading-only
+  interpretation of acceptance criteria when the two conflict. A worked
+  example using the `ctrfhub-docker-build-fix` `compose.sqlite.yml` case is
+  included.
+- `docs/orchestrator-workflows/implementstory.md` — the same clause mirrored
+  into `§Autonomous phase-gate routing`.
+
+This fix-pass was re-checked by A only (PASS — `architecture-review-fix.md`);
+T and S did not re-run, as it is a narrow rule clarification on top of an
+already-S-PASSED diff. The autonomous decision Argos made to handle this
+without further escalation is recorded in
+`.argos/stories/orchestrator-autonomy-hardening/decisions.md` — the
+decision-log pattern this story itself introduces.
 
 ## Next assignable stories (after this merges)
 
