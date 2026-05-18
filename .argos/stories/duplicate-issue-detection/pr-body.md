@@ -71,7 +71,8 @@ as `${{ github.event.issue.title }}`. Both new workflows declare least-privilege
 
 ## Spec-enforcer verdict
 
-_Pending — `spec-audit-1.md` written at Phase 6.2; this section is updated to the final verdict before PR creation._
+**PASS** — see `.argos/stories/duplicate-issue-detection/spec-audit-1.md` (M=1)
+**Date:** 2026-05-18
 
 ## Next assignable stories (after this merges)
 
