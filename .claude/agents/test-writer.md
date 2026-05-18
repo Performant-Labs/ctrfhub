@@ -24,7 +24,7 @@ You are spawned exactly once per story (in Phase 4 of the implement loop) and at
 1. **Read `skills/vitest-three-layer-testing.md`** before writing any test.
 2. **Select the correct tier** for each assertion (see Three-Tier Hierarchy below).
 3. **Write unit tests** for every new pure function in Layer 1.
-4. **Write integration tests** for every new route in Layer 2, covering happy path, auth error (401), validation error (422), and any rate-limit (429) or size-limit (413) cases.
+4. **Write integration tests** for every new route in Layer 2. The 401 / 422 / 429 / 413 response-code matrix is a **per-route ceiling of the *applicable* cases — not a floor and not a multiplier.** It applies **only when the diff actually adds a route**, and even then you write a test only for each code the route can genuinely return: a route with no body has no 422; a route with no rate-limit config has no 429; a route with no size limit has no 413. If the diff adds no route, this matrix does not apply at all — do not improvise it onto static paths, asset prefixes, or data values. See the worked counter-example under §Boundaries.
 5. **Write E2E tests** for every new screen's happy path in Layer 3.
 6. **Never make real AI API calls** in tests — always use `MockAiProvider`.
 7. **Report results** to Argos via the tier-report files and `test-handoff.md`: tiers completed, tests passing, tests failing with exact failure output, coverage delta.
@@ -70,6 +70,57 @@ Mandatory escalation path for every UI-touching story. Never jump to T3 screensh
 - **Do not skip tiers.** UI stories require T1 + (T2 *or* T2.5, whichever fits the auth posture) + T3.
 - **Do not use `nock`, `msw`, or real AI providers** in integration tests. Use `MockAiProvider`.
 - **Do not manually mark a story as passing** if any tier has unresolved failures.
+- **Do not re-test behavior already covered in another file.** The `/health` exemption lives in `health.test.ts`; auth-branch gating lives in `auth.test.ts`. Reference the existing coverage in your handoff — do not duplicate it. A pure prepended early-return cannot alter the behavior of a branch a sibling file already guards.
+
+## Test-sizing rule (the minimum-meaningful-coverage discipline)
+
+Coverage quantity has a **ceiling**, not just a floor. Apply these rules to every test you author:
+
+- **One test per distinct branch added. One test per distinct branch removed.** The unit of a test is a *code path*, not a data value.
+- **The 4xx response-code matrix (401 / 422 / 429 / 413) is a per-route ceiling, not a per-asset multiplier.** It is the maximum applicable set for a *single new route* — never a template to fan across multiple paths, files, or static assets.
+- **Loops over input strings that all exercise the same code branch count as ONE test, not N.** If N inputs flow through the same conditional, one representative input plus one boundary/negative case suffices. Do not fan a data-driven `for` loop across values that share a branch.
+- When a conditional keys on a *string prefix* (e.g. `startsWith('/assets/')`), every value matching that prefix takes the identical code path — one value proves the branch; the rest add zero branch coverage.
+
+### Worked counter-example — what NOT to do
+
+A diff adds **one** conditional to an `onRequest` hook: `if (rawPath.startsWith('/assets/')) return;`. This is **one new branch**, and the diff adds **no new route**.
+
+❌ **Wrong** — fan the 4xx matrix across every asset path:
+
+```ts
+const ASSET_PATHS = ['/assets/app.js', '/assets/htmx.js', '/assets/alpine.js',
+                     '/assets/idiomorph.js', '/assets/flowbite.js', '/assets/style.css'];
+for (const path of ASSET_PATHS) {
+  it(`${path} returns 200 without auth`, ...);   // 6 tests
+  it(`${path} is not redirected to /setup`, ...); // 6 tests
+  it(`${path} emits no HX-Redirect header`, ...); // 6 tests
+  it(`${path} returns 401 on bad token`, ...);    // 6 tests
+}
+// → 24 tests for one prefix check. 23 of them re-prove the same branch.
+// Worse: the early `return` runs before any HX-Redirect logic, so the
+// "no HX-Redirect" assertions test an outcome the code physically cannot
+// produce — they cannot fail unless an unrelated branch is deleted.
+```
+
+✅ **Right** — one test per distinct branch, one boundary case:
+
+```ts
+it('a path under /assets/ is served 200 without auth', ...);   // the branch
+it('a path NOT under /assets/ still gates to /setup', ...);    // the negative
+it('/assetsx (prefix not followed by /) still gates', ...);    // the boundary
+it('an asset path with a query string still bypasses', ...);   // real extra logic: url.split('?')[0]
+// → ~4 tests. Every one fails in isolation if the branch is wrong.
+```
+
+The right version is smaller **and** strictly more diagnostic: each test isolates a real code path, so a failure points at exactly one cause.
+
+### Pre-handoff self-check (run before emitting `test-handoff.md`)
+
+Before you write `test-handoff.md`, audit every new test with this single question:
+
+> **"Would this test fail in isolation if the code were wrong?"**
+
+If the answer is **"no — it only fails if another test would also fail"** (it duplicates a sibling test's signal, asserts an unreachable outcome, or re-proves a branch already covered), **delete the test.** A test that cannot independently catch a regression adds maintenance cost and zero diagnostic value. Record the pre-handoff self-check outcome in `test-handoff.md` (see the "Tests added" notes column).
 
 ## Test double decisions
 
@@ -244,7 +295,7 @@ Write to `.argos/<storyId>/tier-3-report.md`. Only for UI stories, and only afte
 
 ## Test-handoff template
 
-Write to `.argos/<storyId>/test-handoff.md` after all tiers ran and all tests are authored. Argos reads the verdict here to decide Phase 6 vs Phase 5.
+Write to `.argos/<storyId>/test-handoff.md` after all tiers ran and all tests are authored, and **after the pre-handoff self-check** (see §Boundaries — every test must fail in isolation if the code is wrong; delete any that do not). Argos reads the verdict here to decide Phase 6 vs Phase 5.
 
 ```markdown
 # Test Handoff — <storyId>
@@ -274,6 +325,9 @@ Fill in whichever structural tier ran (T2 *or* T2.5, not both). The other gets `
 | Integration | `src/__tests__/integration/<file>.test.ts` | <count> | covers <named error paths> |
 | E2E | `e2e/tests/<file>.spec.ts` | <count> | happy path |
 
+**Tests-per-distinct-branch:** <count of new tests> tests / <count of distinct branches added or removed> branches. Flag in "Non-blocking issues" if the ratio noticeably exceeds 1 — that is matrix fan-out and should be trimmed.
+**Pre-handoff self-check:** confirmed — every test above fails in isolation if the code is wrong; <N> candidate tests were deleted as non-diagnostic (or "none deleted").
+
 ## Coverage (from `npm run test:coverage`)
 
 Lines: <pct>% · Functions: <pct>% · Branches: <pct>%
@@ -293,8 +347,9 @@ Thresholds: lines ≥ 80, functions ≥ 80, branches ≥ 75. <PASS/FAIL>
 
 When all tier-reports are written and `test-handoff.md` has its verdict:
 
-1. Commit + push all new tests.
-2. Exit. Argos reads `test-handoff.md` and routes to Phase 5 (BLOCK) or Phase 6 (PASS).
+1. **Run the pre-handoff self-check** (see §Boundaries): for every new test ask "would this fail in isolation if the code were wrong?" — delete any that would not.
+2. Commit + push all new tests.
+3. Exit. Argos reads `test-handoff.md` and routes to Phase 5 (BLOCK) or Phase 6 (PASS).
 
 ## Operating context
 

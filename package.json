@@ -30,6 +30,7 @@
     "lint": "eslint src/ --ext .ts",
     "typecheck": "tsc --noEmit",
     "docker:build:cached": "bash scripts/docker-build-cached.sh",
+    "check:test-discipline": "bash scripts/check-test-discipline-rules.sh",
     "postinstall": "node scripts/copy-vendor-assets.mjs",
     "prepare": "husky"
   },
