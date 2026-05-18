@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # CTRFHub — Production Dockerfile
 #
 # Multi-stage build per docs/planning/architecture.md §Image build:
@@ -8,8 +9,18 @@
 # It is linked against the system's glibc/musl, so both stages must use
 # the same base image version to avoid runtime linker mismatches.
 #
-# Build:
+# The `# syntax=` directive above pins the BuildKit frontend so that
+# `RUN --mount=type=cache,...` is available. The npm-cache mounts below
+# persist the npm package cache across builds; combined with the local
+# buildx cache backend (see scripts/docker-build-cached.sh) this turns a
+# ~2–3 min cold build into a sub-30s warm build, even though the builder
+# stage copies the full source BEFORE `npm ci` (a cache mount survives
+# the `COPY . .` layer invalidation that an ordinary layer cache cannot).
+#
+# Build (plain):
 #   docker build -f Dockerfile -t ctrfhub:local .
+# Build (cached, for fast iteration):
+#   scripts/docker-build-cached.sh        # or: npm run docker:build:cached
 #
 # This file is owned by CI-001. Dockerfile.dev is owned by CI-002.
 
@@ -31,7 +42,12 @@ COPY . .
 
 # Install all dependencies (including devDeps for tsc, tailwind CLI, etc.).
 # The postinstall hook vendors client JS into src/assets/.
-RUN npm ci
+#
+# --mount=type=cache,target=/root/.npm persists npm's package cache across
+# builds. This is the primary warm-build accelerator: even though the
+# `COPY . .` above invalidates this layer on any source change, the cache
+# mount lets `npm ci` re-resolve from the local cache (no network refetch).
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # 1. Compile TypeScript → dist/
 RUN npx tsc
@@ -74,7 +90,8 @@ COPY package.json package-lock.json ./
 # are already baked into dist/assets/ by the builder, so the runner must
 # skip it. better-sqlite3's own install scripts run via the explicit
 # `npm rebuild` below.
-RUN apk add --no-cache python3 make g++ && \
+RUN --mount=type=cache,target=/root/.npm \
+    apk add --no-cache python3 make g++ && \
     npm ci --omit=dev --ignore-scripts && \
     npm rebuild better-sqlite3 && \
     apk del python3 make g++

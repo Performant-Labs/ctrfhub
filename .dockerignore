@@ -2,27 +2,53 @@
 # Excludes files that don't belong in the Docker build context.
 # Every excluded directory/file reduces the context sent to the daemon,
 # speeding up builds and preventing accidental secret/credential inclusion.
+#
+# NOTE: the builder stage runs `COPY . .` before `npm ci` (the postinstall
+# hook needs scripts/ + src/client/), so the build context is the full
+# repo. Keeping this list tight directly speeds up every build.
 
 # Node.js build artefacts — rebuilt inside the container
 node_modules
 dist
 
-# Test files — not needed in the production image
+# Test files & test output — not needed in the production image
 src/__tests__
 e2e
+test-results
+coverage
+.nyc_output
+ctrf
+playwright-report
 
 # Documentation and planning — not runtime code
 docs
 .argos
 .antigravity
+.claude
+.intent
+.tugboat
+*.md
 
 # Version control
 .git
 .gitignore
+.gitattributes
 
-# Coverage reports
-coverage
-.nyc_output
+# CI / repo-tooling config — not runtime code
+.github
+.husky
+.mergify.yml
+.pr_agent.toml
+.eslintrc.json
+tsconfig.eslint.json
+
+# Docker build files themselves — not needed inside the image context
+Dockerfile
+Dockerfile.dev
+.dockerignore
+compose.yml
+compose.dev.yml
+compose.sqlite.yml
 
 # Editor / IDE configs
 .vscode
@@ -41,13 +67,10 @@ coverage
 # CI coordination files
 .claude-bridge
 
-# Local SQLite databases
+# Local SQLite databases (covers .e2e-test.db, *.db-shm, *.db-wal)
 *.db
 *.db-shm
 *.db-wal
-
-# TypeScript declaration maps (only needed in builder stage, not runner)
-# (These are copied via dist/ COPY, but excluding src avoids copying them twice)
 
 # Log files
 *.log
