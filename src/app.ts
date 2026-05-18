@@ -499,12 +499,23 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
    * restructure the hook.
    */
   app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+    const rawPath = request.url.split('?')[0] ?? '';
+
+    // ── Branch 0: Static assets bypass auth entirely ──
+    // Static client assets (/assets/*) carry no session and no API token,
+    // so they must be served before any auth branch runs — otherwise an
+    // unauthenticated asset request falls through to Branch 5 and is
+    // redirected to /login (yielding a 404 for the asset). @fastify/static
+    // already returns a real 404 for genuinely missing files.
+    if (rawPath.startsWith('/assets/')) {
+      return;
+    }
+
     // ── Branch 1: Empty-users redirect to /setup ──
     // If the users table is empty, the app has never been configured.
     // Redirect ALL requests to /setup except the explicit allow-list:
     //   /setup, /api/auth/*, /health, and static assets (/assets/*).
     // Browser clients get a 302 redirect; HTMX clients get HX-Redirect + 200.
-    const rawPath = request.url.split('?')[0] ?? '';
     const isExemptFromEmptyCheck =
       rawPath === '/setup' ||
       rawPath.startsWith('/setup/') ||
