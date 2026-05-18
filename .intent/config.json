@@ -1,0 +1,118 @@
+{
+  "scripts": [
+    {
+      "name": "dev",
+      "command": "npm run dev",
+      "mode": "service",
+      "category": "dev"
+    },
+    {
+      "name": "build",
+      "command": "npm run build",
+      "mode": "command",
+      "category": "build"
+    },
+    {
+      "name": "test",
+      "command": "npm run test",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:unit",
+      "command": "npm run test:unit",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:int",
+      "command": "npm run test:int",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:e2e",
+      "command": "npm run test:e2e",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:coverage",
+      "command": "npm run test:coverage",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:watch",
+      "command": "npm run test:watch",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "migrate:pg",
+      "command": "npm run migrate:pg",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "migrate:sqlite",
+      "command": "npm run migrate:sqlite",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "schema:emit:pg",
+      "command": "npm run schema:emit:pg",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "schema:emit:sqlite",
+      "command": "npm run schema:emit:sqlite",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "schema:update:pg",
+      "command": "npm run schema:update:pg",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "schema:update:sqlite",
+      "command": "npm run schema:update:sqlite",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "css:dev",
+      "command": "npm run css:dev",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "css:build",
+      "command": "npm run css:build",
+      "mode": "command",
+      "category": "build"
+    },
+    {
+      "name": "lint",
+      "command": "npm run lint",
+      "mode": "command",
+      "category": "lint"
+    },
+    {
+      "name": "typecheck",
+      "command": "npm run typecheck",
+      "mode": "command",
+      "category": "typecheck"
+    },
+    {
+      "name": "prepare",
+      "command": "npm run prepare",
+      "mode": "command",
+      "category": "other"
+    }
+  ]
+}
