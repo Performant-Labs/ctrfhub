@@ -29,6 +29,7 @@
     "assets:dev": "npx concurrently \"npm run css:dev\" \"tsx watch --clear-screen=false scripts/copy-vendor-assets.mjs\"",
     "lint": "eslint src/ --ext .ts",
     "typecheck": "tsc --noEmit",
+    "docker:build:cached": "bash scripts/docker-build-cached.sh",
     "postinstall": "node scripts/copy-vendor-assets.mjs",
     "prepare": "husky"
   },
