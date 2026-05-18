@@ -60,7 +60,8 @@ three criteria and confirmed `npm test` → 498 pass, `tsc --noEmit` clean.
 
 ## Spec-enforcer verdict
 
-_Pending — `spec-audit-1.md` written at Phase 6.2; this section is updated to the final verdict before PR creation._
+**PASS** — see `.argos/stories/test-writer-discipline/spec-audit-1.md` (M=1)
+**Date:** 2026-05-18
 
 ## Next assignable stories (after this merges)
 
