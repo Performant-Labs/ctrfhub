@@ -60,7 +60,8 @@ test would only re-shell-out to `docker build`. Reasoning is documented in
 
 ## Spec-enforcer verdict
 
-_Pending — `spec-audit-1.md` written at Phase 6.2; this section is updated to the final verdict before PR creation._
+**PASS** — see `.argos/stories/ctrfhub-docker-build-cache/spec-audit-1.md` (M=1)
+**Date:** 2026-05-17
 
 ## Next assignable stories (after this merges)
 
