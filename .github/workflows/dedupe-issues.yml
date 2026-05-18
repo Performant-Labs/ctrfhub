@@ -1,0 +1,160 @@
+# CTRFHub — Duplicate-issue detection (LLM-free)
+#
+# Triggered by: a new issue being opened.
+#
+# What it does:
+#   1. Extracts ~5 content keywords from the new issue's title
+#      (stopwords and punctuation stripped).
+#   2. Runs `gh issue list --search` with those keywords — GitHub's own
+#      search returns ranked candidate issues, no LLM involved.
+#   3. Filters out the just-opened issue itself.
+#   4. If ≥1 candidate remains, posts a polite comment on the new issue
+#      listing the top 5 candidates (title, state, link).
+#   5. If 0 candidates remain, does nothing (silent — no comment).
+#
+# Cost: zero. No Claude/Anthropic/LLM API calls — keyword matching only.
+# If keyword search proves too imprecise, the follow-up enhancement is
+# local sentence-transformers embeddings (tracked separately, out of scope).
+#
+# Permissions (least privilege):
+#   issues: write  — required to post the suggestion comment.
+#   contents: read — required for `actions/checkout` / `gh` repo context.
+#
+# @see docs/issue-management.md
+
+name: Dedupe Issues
+
+on:
+  issues:
+    types: [opened]
+
+# Least-privilege: this workflow only reads repo metadata and writes one
+# comment on the triggering issue. It never writes code or other resources.
+permissions:
+  issues: write
+  contents: read
+
+# Avoid overlapping runs for the same issue (e.g. rapid edit/reopen events).
+concurrency:
+  group: dedupe-issues-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  suggest-duplicates:
+    name: Suggest possible duplicates
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find and comment on possible duplicates
+        env:
+          # GITHUB_TOKEN is the auto-generated, per-job token. The `gh` CLI
+          # reads it from this variable. Its capabilities are bounded by the
+          # `permissions:` block above.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          set -euo pipefail
+
+          # ---------------------------------------------------------------
+          # 1. Keyword extraction from the issue title.
+          #    - lowercase, strip punctuation to spaces
+          #    - drop common English stopwords and very short tokens
+          #    - keep the first 5 remaining content words
+          # ---------------------------------------------------------------
+          STOPWORDS=" a an the and or but if then else of to in on at by for \
+            with from into is are was were be been being it its this that these \
+            those as not no do does did has have had can could should would will \
+            i we you they he she my our your their me us them when where how why \
+            what which who whom about over under after before than too very just \
+            so up out down off again here there all any some such own same other "
+
+          # Normalise: lowercase + non-alphanumeric -> spaces.
+          NORMALISED=$(printf '%s' "$ISSUE_TITLE" \
+            | tr '[:upper:]' '[:lower:]' \
+            | tr -c 'a-z0-9' ' ')
+
+          KEYWORDS=""
+          COUNT=0
+          for word in $NORMALISED; do
+            # Skip tokens shorter than 3 chars (low signal: "io", "ui" survive at 2 — acceptable to drop).
+            if [ "${#word}" -lt 3 ]; then
+              continue
+            fi
+            # Skip stopwords (matched with surrounding spaces for exactness).
+            case "$STOPWORDS" in
+              *" $word "*) continue ;;
+            esac
+            if [ -z "$KEYWORDS" ]; then
+              KEYWORDS="$word"
+            else
+              KEYWORDS="$KEYWORDS $word"
+            fi
+            COUNT=$((COUNT + 1))
+            if [ "$COUNT" -ge 5 ]; then
+              break
+            fi
+          done
+
+          if [ -z "$KEYWORDS" ]; then
+            echo "No usable keywords extracted from title; skipping (silent)."
+            exit 0
+          fi
+          echo "Search keywords: $KEYWORDS"
+
+          # ---------------------------------------------------------------
+          # 2. Ask GitHub search for ranked candidates.
+          #    --state all so closed duplicates are surfaced too.
+          # ---------------------------------------------------------------
+          CANDIDATES=$(gh issue list \
+            --repo "$REPO" \
+            --state all \
+            --search "$KEYWORDS" \
+            --limit 10 \
+            --json number,title,url,state,labels)
+
+          # ---------------------------------------------------------------
+          # 3. Filter out the just-opened issue, then take the top 5.
+          # ---------------------------------------------------------------
+          FILTERED=$(printf '%s' "$CANDIDATES" \
+            | jq --argjson self "$ISSUE_NUMBER" \
+                '[.[] | select(.number != $self)] | .[0:5]')
+
+          MATCH_COUNT=$(printf '%s' "$FILTERED" | jq 'length')
+          echo "Candidate count after filtering: $MATCH_COUNT"
+
+          # 0-candidate path: do nothing, no comment.
+          if [ "$MATCH_COUNT" -eq 0 ]; then
+            echo "No candidates found; not posting a comment (silent)."
+            exit 0
+          fi
+
+          # ---------------------------------------------------------------
+          # 4. Build a polite, brief comment listing the candidates.
+          # ---------------------------------------------------------------
+          if [ "$MATCH_COUNT" -eq 1 ]; then
+            HEADER="Thanks for opening this issue. I found 1 issue that might be related:"
+          else
+            HEADER="Thanks for opening this issue. I found $MATCH_COUNT issues that might be related:"
+          fi
+
+          LIST=$(printf '%s' "$FILTERED" | jq -r '
+            to_entries[]
+            | "\(.key + 1). [\(.value.title)](\(.value.url)) — _\(.value.state | ascii_downcase)_"
+          ')
+
+          BODY=$(printf '%s\n\n%s\n\nIf one of these already covers your report, please close this issue as a duplicate so we can keep discussion in one place. If none of them match, no action is needed — a maintainer will follow up.\n\n_This is an automated suggestion based on a keyword search of existing issues; it may be imperfect._' \
+            "$HEADER" "$LIST")
+
+          echo "$BODY"
+
+          # ---------------------------------------------------------------
+          # 5. Post the comment on the triggering issue.
+          # ---------------------------------------------------------------
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPO" --body "$BODY"
+          echo "Posted duplicate-suggestion comment on issue #$ISSUE_NUMBER."
