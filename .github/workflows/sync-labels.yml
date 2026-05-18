@@ -1,0 +1,66 @@
+# CTRFHub — One-time / on-demand label sync
+#
+# Triggered by: manual `workflow_dispatch` only.
+#
+# What it does:
+#   Ensures the repository labels required by the issue-management workflows
+#   exist. `actions/stale` does NOT create its label automatically — if the
+#   `stale` label is missing it silently fails to apply it. This workflow
+#   creates (or updates the colour/description of) every label in
+#   `.github/labels.md`, idempotently.
+#
+#   Run this once after merging the issue-management story, and again any
+#   time `.github/labels.md` changes.
+#
+# Cost: zero. No Claude/Anthropic/LLM API calls.
+#
+# Permissions (least privilege):
+#   issues: write  — required to create/update labels.
+#
+# @see .github/labels.md
+# @see docs/issue-management.md
+
+name: Sync Labels
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: sync-labels
+  cancel-in-progress: false
+
+jobs:
+  sync-labels:
+    name: Create or update repository labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Ensure required labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Labels required by the issue-management workflows.
+          # Format: "name|color|description" (color is a 6-digit hex, no '#').
+          LABELS=(
+            "stale|795548|Inactive for too long; will be auto-closed if activity does not resume"
+            "pinned|0e8a16|Exempt from the stale sweep; never auto-closed"
+          )
+
+          for entry in "${LABELS[@]}"; do
+            IFS='|' read -r name color desc <<< "$entry"
+            # `--force` makes this idempotent: creates the label if missing,
+            # otherwise updates its colour/description in place.
+            gh label create "$name" \
+              --repo "$REPO" \
+              --color "$color" \
+              --description "$desc" \
+              --force
+            echo "Synced label: $name"
+          done

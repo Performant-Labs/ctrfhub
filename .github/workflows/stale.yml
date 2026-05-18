@@ -1,0 +1,97 @@
+# CTRFHub — Stale issue & PR management (LLM-free)
+#
+# Triggered by: a daily schedule (08:00 UTC) and manual `workflow_dispatch`.
+#
+# What it does:
+#   Uses the canonical `actions/stale@v9` action — battle-tested, no LLM.
+#   - Issues inactive for 60 days are labeled `stale`.
+#   - If still inactive 14 days after labeling, they are closed.
+#   - Any new activity (comment, label change) removes the `stale` label
+#     and resets the clock — handled automatically by actions/stale.
+#   - Issues carrying an exempt label are never marked stale.
+#
+# Pull requests are also swept, but on a more lenient schedule (90 / 14 days)
+# because open PRs represent in-flight contributor work; see the rationale in
+# docs/issue-management.md. Exempt-PR labels mirror the issue exemptions.
+#
+# Cost: zero. No Claude/Anthropic/LLM API calls.
+#
+# Permissions (least privilege):
+#   issues: write        — label and close stale issues.
+#   pull-requests: write — label and close stale PRs.
+#   contents: read       — actions/stale reads no code, but a read scope
+#                          is the minimum the action requires.
+#
+# @see docs/issue-management.md
+
+name: Stale
+
+on:
+  schedule:
+    # Daily at 08:00 UTC.
+    - cron: '0 8 * * *'
+  # Allow maintainers to run the sweep on demand from the Actions UI.
+  workflow_dispatch:
+
+# Least-privilege: only the scopes actions/stale needs to label and close.
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+# Only one sweep at a time.
+concurrency:
+  group: stale-sweep
+  cancel-in-progress: false
+
+jobs:
+  stale:
+    name: Mark and close stale issues and PRs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Run stale sweep
+        uses: actions/stale@v9
+        with:
+          # --- Timing -------------------------------------------------
+          # Issues: 60 days inactive -> `stale`; +14 days -> closed.
+          days-before-stale: 60
+          days-before-close: 14
+          # PRs: more lenient — 90 days inactive -> stale; +14 -> closed.
+          days-before-pr-stale: 90
+          days-before-pr-close: 14
+
+          # --- Labels -------------------------------------------------
+          stale-issue-label: stale
+          stale-pr-label: stale
+          # Issues/PRs with any of these labels are never marked stale.
+          exempt-issue-labels: 'pinned,security,help wanted,good first issue'
+          exempt-pr-labels: 'pinned,security,help wanted,good first issue'
+
+          # --- Messages (polite, brief; no LLM-generated text) --------
+          stale-issue-message: >
+            This issue has been automatically marked as stale because it has
+            had no activity for 60 days. It will be closed in 14 days if no
+            further activity occurs. Add a comment to keep it open, or apply
+            the `pinned` label to exempt it.
+          close-issue-message: >
+            This issue was closed because it remained inactive after being
+            marked stale. If it is still relevant, please reopen it or open a
+            new issue with up-to-date details — we're happy to take another look.
+          stale-pr-message: >
+            This pull request has been automatically marked as stale because it
+            has had no activity for 90 days. It will be closed in 14 days if no
+            further activity occurs. Push a commit or leave a comment to keep it open.
+          close-pr-message: >
+            This pull request was closed because it remained inactive after
+            being marked stale. Please reopen it if you intend to continue the work.
+
+          # --- Safety / rate-limiting ---------------------------------
+          # Cap GitHub API mutations per run to stay well within rate limits.
+          operations-per-run: 30
+          # Process least-recently-updated items first so the oldest backlog
+          # is always addressed even when the per-run cap is hit.
+          ascending: true
+          # Removing the stale label (via activity) resets the countdown.
+          remove-stale-when-updated: true
