@@ -6,16 +6,18 @@
  * caches no instance and exposes no module-level accessor function. Per
  * `architecture.md §Layering and Dependency Direction`, `buildApp()` in
  * `src/app.ts` is the single composition root — it calls `buildAuth(options.db)`
- * exactly once during application wiring and threads the result into the
- * global preHandler hook (session + API-key validation) and into
+ * once per app instance during application wiring and threads the result into
+ * the global preHandler hook (session + API-key validation) and into
  * `registerAuthRoutes()` for the `/api/auth/*` catch-all.
  *
  * Per `architecture.md §Code Conventions → Abstraction level`, cross-cutting
- * dependencies that integration tests need to substitute belong on the
- * `AppOptions` DI seam — not as ambient module-level singletons. Integration
- * tests therefore call `buildAuth(':memory:')` themselves and pass the result
- * into `buildApp({ db, auth })`, giving each test an isolated in-memory
- * Better Auth instance with no shared state between specs.
+ * dependencies a test needs to substitute belong on the `AppOptions` DI seam —
+ * not as ambient module-level singletons. Integration tests that need to seed
+ * Better Auth's schema (`auth.$context.runMigrations()`) or mint API-key
+ * fixtures (`auth.api.createApiKey(...)`) therefore call `buildAuth(dbPath)`
+ * standalone and operate on the returned instance directly; `buildApp({ testing:
+ * true, db: dbPath })` internally calls `buildAuth(options.db)` itself when
+ * wiring the app and does not accept an externally constructed auth instance.
  *
  * Database note: Better Auth manages its own Kysely connection independently
  * from MikroORM. We pass the same underlying database — SQLite via
