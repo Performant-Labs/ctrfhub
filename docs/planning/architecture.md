@@ -676,7 +676,7 @@ CTRFHub's request-handling code is organized into a strict, one-directional laye
 4. **Persistence goes through the per-request EntityManager.** Data access uses the
    request-forked `request.em` — **never `fastify.orm.em`** (the root EM). MikroORM is the
    repository layer; see [§Code Conventions → MikroORM usage](#code-conventions) for the
-   repository-pattern detail and the current drift note.
+   repository-pattern detail.
 5. **Entities are leaves.** An entity under `src/entities/` may import another entity (for a
    relation — e.g. `TestRun.ts` imports `ProjectSchema`) but imports nothing from `modules/`,
    `services/`, routes, or `app.ts`. Entities are the bottom of the chain.
@@ -702,18 +702,19 @@ CTRFHub's request-handling code is organized into a strict, one-directional laye
   services, plugins, and DI seams together. It imports from every layer; nothing imports from it
   except `src/index.ts` (the process entry point).
 
-### Known drift (André adjudicates)
+### Ratified convention
 
-- **No dedicated repository classes.** The layer chain above names a "repository" layer, but the
-  codebase currently uses the MikroORM `EntityManager` directly as that layer (services call
-  `em.find`/`em.persist` rather than going through `FooRepository` classes). This is consistent
-  across the codebase, so it is the *de facto* pattern — but it differs from the
-  "route → handler → service → repository → entity" wording in `auditarchitecture.md`. The
-  **intended rule** is: persistence is encapsulated behind the service layer, accessed via the
-  per-request `EntityManager`; dedicated repository classes are optional and should only be
-  introduced when query logic is reused across services. A should treat a service calling
-  `request.em` directly as **conformant**, and only flag as drift a *route* or *template*
-  querying the EM directly.
+- **No dedicated repository classes (André adjudicated 2026-05-19 — ratified, not drift).** The
+  layer chain above names a "repository" layer; the codebase fills that layer with the MikroORM
+  `EntityManager` directly — services call `em.find`/`em.persist` rather than going through
+  `FooRepository` classes. This is consistent across the codebase and is the **intended
+  convention**: persistence is encapsulated behind the service layer, accessed via the
+  per-request `EntityManager`; dedicated repository classes are optional and should be
+  introduced only when query logic is reused across services. A treats a service calling
+  `request.em` directly as **conformant**, and flags as drift only a *route* or *template*
+  querying the EM directly. (The "route → handler → service → repository → entity" wording in
+  `auditarchitecture.md` describes the layer *roles*; the `EntityManager` is the repository
+  role's implementation.)
 
 ---
 
@@ -732,17 +733,18 @@ CTRFHub's request-handling code is organized into a strict, one-directional laye
 | Source files | `kebab-case.ts` for utilities/services; `routes.ts` / `service.ts` / `schemas.ts` are fixed names inside a module | `src/lib/artifact-validation.ts`, `src/modules/ingest/service.ts` |
 | Entity files | `PascalCase.ts`, one entity per file, file name == entity name | `src/entities/TestRun.ts` |
 | Classes | `PascalCase`; service classes end in `Service` | `IngestService` (`src/modules/ingest/service.ts`) |
-| Route registration fns | `register<Module>Routes` (named export) **or** a default-exported `FastifyPluginAsync` | `registerAuthRoutes` (`src/modules/auth/routes.ts`); `ingestPlugin` default export (`src/modules/ingest/routes.ts`) |
+| Route registration fns | Canonical: default-exported `FastifyPluginAsync`. Variant (to be normalized — see below): named `register<Module>Routes` export | `ingestPlugin` default export (`src/modules/ingest/routes.ts`); `registerAuthRoutes` variant (`src/modules/auth/routes.ts`) |
 | Functions / variables | `camelCase` | `categorizeRun`, `parseMaxJsonSize` |
 | Constants | `UPPER_SNAKE_CASE` for module-level fixed values | `CHUNK_SIZE = 500` (`src/modules/ingest/service.ts`) |
 | Zod schemas | `PascalCase` ending in `Schema`; derived type via `z.infer<>` | `CtrfReportSchema` → `type CtrfReport` (`src/modules/ingest/schemas.ts`) |
 | MikroORM config | `mikro-orm.config.<dialect>.ts` | `mikro-orm.config.pg.ts`, `mikro-orm.config.sqlite.ts` |
 
-> **Drift note (André adjudicates).** Two route-registration shapes coexist — a named
-> `register<Module>Routes` function (`auth`) and a default-exported `FastifyPluginAsync`
-> (`ingest`). Both are valid Fastify plugin idioms and both are present in `skills/fastify-route-convention.md`.
-> Treat either as conformant; A should only flag a route file that uses *neither* (e.g. a bare
-> `setupRoutes` with no plugin encapsulation).
+> **Canonical shape (André adjudicated 2026-05-19).** The **canonical route-registration shape
+> is a default-exported `FastifyPluginAsync`** (`ingest`). The named `register<Module>Routes`
+> function form (`auth` — `registerAuthRoutes`) is a tolerated **variant, to be normalized to
+> the canonical shape when AUTH-002 next touches the auth module**. Until then A treats both as
+> conformant and flags only a route file that uses *neither* (e.g. a bare `setupRoutes` with no
+> plugin encapsulation); both idioms appear in `skills/fastify-route-convention.md`.
 
 ### File organization within `src/`
 
@@ -768,6 +770,11 @@ src/
   individual file, when consuming a directory's public surface.
 - **One concern per file.** An entity per file; a module's HTTP surface in `routes.ts`, its logic
   in `service.ts`, its schemas in `schemas.ts`.
+- **A trivial route may register inline in the composition root.** A module whose HTTP surface
+  is a single trivial endpoint — e.g. `health`, whose route is `app.get('/health', …)` in
+  `buildApp()` (`src/app.ts`) — may skip its own `routes.ts` and be registered directly in the
+  composition root; the `health` module ships only `schemas.ts`. A should not flag a missing
+  `routes.ts` for such a module.
 
 ### Zod-schema location (resolves N1)
 
@@ -803,8 +810,10 @@ The codebase surfaces, logs, and swallows errors deliberately:
 
 ### Route registration
 
-- A route module is a **Fastify plugin** — either a named `register<Module>Routes(fastify, ...)`
-  async function or a default-exported `FastifyPluginAsync`. `buildApp()` registers each.
+- A route module is a **Fastify plugin**. The **canonical shape is a default-exported
+  `FastifyPluginAsync`**; the named `register<Module>Routes(fastify, ...)` async-function form
+  is a tolerated variant (`auth` — to be normalized to the canonical shape when AUTH-002 next
+  touches the auth module). `buildApp()` registers each.
 - Routes use the **ZodTypeProvider** (`@fastify/type-provider-zod`) so request/response schemas
   are validated and typed from Zod. **The one documented exception** is `src/modules/auth/routes.ts`:
   Better Auth owns its own request/response contract, so the `/api/auth/*` catch-all skips the
@@ -823,8 +832,12 @@ The codebase surfaces, logs, and swallows errors deliberately:
   a SQLite equivalent is a forbidden pattern (`CLAUDE.md`).
 - **Schema is synced by the schema-generator at boot** (`orm.schema.updateSchema()`), not by
   migration files, for the MVP — see [§Schema sync at boot](#production-deployment) and INFRA-005.
-- See the drift note in [§Layering → Known drift](#layering-and-dependency-direction) on the
-  absence of dedicated repository classes.
+- **No dedicated repository classes — this is the ratified convention, not drift.** Services
+  access persistence through the per-request `EntityManager` (`request.em`) directly; dedicated
+  `FooRepository` classes are *not* used — they are optional, introduced only when query logic
+  is reused across services. A treats a service calling `request.em` directly as **conformant**
+  (André adjudicated 2026-05-19); see
+  [§Layering → Ratified convention](#layering-and-dependency-direction).
 
 ### Transaction boundaries
 
