@@ -1,9 +1,21 @@
 /**
  * CTRFHub — Better Auth configuration.
  *
- * Exports the `auth` instance consumed by:
- *   - `src/app.ts` global preHandler (session + API-key validation)
- *   - `src/modules/auth/routes.ts` `/api/auth/*` catch-all
+ * Exports `buildAuth()`, a composition-root factory that returns a fully
+ * configured Better Auth instance. It is **not** a singleton: this module
+ * caches no instance and exposes no module-level accessor function. Per
+ * `architecture.md §Layering and Dependency Direction`, `buildApp()` in
+ * `src/app.ts` is the single composition root — it calls `buildAuth(options.db)`
+ * exactly once during application wiring and threads the result into the
+ * global preHandler hook (session + API-key validation) and into
+ * `registerAuthRoutes()` for the `/api/auth/*` catch-all.
+ *
+ * Per `architecture.md §Code Conventions → Abstraction level`, cross-cutting
+ * dependencies that integration tests need to substitute belong on the
+ * `AppOptions` DI seam — not as ambient module-level singletons. Integration
+ * tests therefore call `buildAuth(':memory:')` themselves and pass the result
+ * into `buildApp({ db, auth })`, giving each test an isolated in-memory
+ * Better Auth instance with no shared state between specs.
  *
  * Database note: Better Auth manages its own Kysely connection independently
  * from MikroORM. We pass the same underlying database — SQLite via
@@ -17,6 +29,8 @@
  * The `ctrf_` prefix and `x-api-token` header are configured below.
  *
  * @see skills/better-auth-session-and-api-tokens.md
+ * @see docs/planning/architecture.md §Layering and Dependency Direction
+ * @see docs/planning/architecture.md §Code Conventions → Abstraction level
  * @see docs/planning/architecture.md §CSRF protection
  * @see docs/planning/database-design.md §4 (Better Auth note)
  */
@@ -174,35 +188,6 @@ export async function buildAuth(dbPath?: string) {
       }),
     ],
   });
-}
-
-// ---------------------------------------------------------------------------
-// Singleton export — used by app.ts and routes.ts
-// ---------------------------------------------------------------------------
-
-/**
- * The canonical Better Auth instance for the application.
- *
- * Initialised lazily on first access via `getAuth()`.
- * Integration tests that need an isolated instance should call
- * `buildAuth(':memory:')` directly and pass the result to `buildApp()`.
- */
-let _auth: Awaited<ReturnType<typeof buildAuth>> | null = null;
-
-/**
- * Return the singleton auth instance, initialising it on first call.
- *
- * @example
- * ```typescript
- * const auth = await getAuth();
- * const session = await auth.api.getSession({ headers });
- * ```
- */
-export async function getAuth(): Promise<Awaited<ReturnType<typeof buildAuth>>> {
-  if (!_auth) {
-    _auth = await buildAuth();
-  }
-  return _auth;
 }
 
 /**
