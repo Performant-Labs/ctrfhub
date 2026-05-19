@@ -92,7 +92,8 @@ none
 
 ## Spec-enforcer verdict
 
-_Pending — S audit runs at Phase 6.2 before this PR is opened._
+**PASS** — see `.argos/stories/architecture-augment/spec-audit-1.md` (0 block, 0 warn, 2 nit; the 2 nits are doc-precision improvements already carried in "Decisions that deviate from spec"). S ruled the canonical-doc resolution (D3) acceptable — the brief delegated it to F's judgment and F disclosed the deviation transparently.
+**Date:** 2026-05-19
 
 ---
 _Generated from `.argos/stories/architecture-augment/pr-body.md`._
