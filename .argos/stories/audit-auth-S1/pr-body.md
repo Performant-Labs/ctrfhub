@@ -53,7 +53,8 @@ none
 
 ## Spec-enforcer verdict
 
-_Pending — S audit runs at Phase 6.2 before this PR is opened._
+**PASS** — see `.argos/stories/audit-auth-S1/spec-audit-1.md` (0 block, 0 warn, 0 nit). S concurred with A's two-iteration ruling on the literal-grep-substring decision.
+**Date:** 2026-05-19
 
 ---
 _Generated from `.argos/stories/audit-auth-S1/pr-body.md`._
