@@ -5,7 +5,7 @@
 **Date:** 2026-05-19
 **Branch:** `story/audit-auth-S1`
 **Commits added this iteration:**
-- (pending) `feat(audit-auth-S1): remove dead getAuth() singleton and fix stale auth JSDoc`
+- `b69f37f` `feat(audit-auth-S1): remove dead getAuth() singleton and fix stale auth JSDoc`
 
 ### What was built / fixed
 
