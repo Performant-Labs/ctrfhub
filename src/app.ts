@@ -289,17 +289,31 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       const rawPath = request.url.split('?')[0] ?? '';
       const isHxRoute = rawPath.startsWith('/hx/');
 
+      // DD-029 (`docs/planning/database-design.md:1191-1198`) fixes the
+      // serialized body to exactly three keys: `error`, `code`,
+      // `retry_after_s`. The TypeScript literal type matches the wire-format
+      // view. `statusCode` is set non-enumerably below because Fastify's
+      // `setErrorStatusCode` reads `err.statusCode` off the thrown body to
+      // set the reply code (`node_modules/fastify/lib/error-handler.js`), but
+      // it must not appear in the JSON serialization.
       const body: {
-        statusCode: number;
         error: string;
         code: string;
         retry_after_s: number;
       } = {
-        statusCode: 429,
         error: 'rate_limited',
         code: 'too_many_requests',
         retry_after_s: retryAfterS,
       };
+
+      // `statusCode` is read by Fastify's `setErrorStatusCode` via direct
+      // property access (not iteration), so making it non-enumerable keeps
+      // it out of the JSON-serialized body while still driving the reply
+      // status code. Same trick as `headers` below.
+      Object.defineProperty(body, 'statusCode', {
+        value: 429,
+        enumerable: false,
+      });
 
       if (isHxRoute) {
         // `headers` is read by Fastify's `setErrorHeaders` via direct property
@@ -315,15 +329,21 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       return body;
     },
     onExceeded: (request: FastifyRequest, key: string) => {
-      // DD-029 point 7: hash the limiter key (first 8 hex of SHA-256) so
-      // repeat-offender patterns surface in the log without leaking raw
-      // IPs / user-ids / token-ids.
+      // DD-029 point 7 (`docs/planning/database-design.md:1233-1241`): hash
+      // the limiter key (first 8 hex of SHA-256) so repeat-offender patterns
+      // surface in the log without leaking raw IPs / user-ids / token-ids.
+      // Field names are snake_case per DD-029's canonical sample; `limit`
+      // and `backend` are derived from this registration block (max=600,
+      // timeWindow='1 minute' → "600/1m"; library default store →
+      // "fastify-rate-limit").
       const keyHash = createHash('sha256').update(String(key)).digest('hex').slice(0, 8);
       request.log.warn(
         {
           event: 'ratelimit.exceeded',
-          keyHash,
           endpoint: `${request.method} ${request.url.split('?')[0] ?? ''}`,
+          key_hash: keyHash,
+          limit: '600/1m',
+          backend: 'fastify-rate-limit',
         },
         'Rate limit exceeded',
       );
