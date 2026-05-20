@@ -46,7 +46,7 @@ import { MikroORM } from '@mikro-orm/core';
 import { fromNodeHeaders } from 'better-auth/node';
 
 import fastifyMultipart from '@fastify/multipart';
-import type { AppOptions } from './types.js';
+import type { AppOptions, ArtifactStorage, EventBus, AiProvider } from './types.js';
 import type { BootState } from './modules/health/schemas.js';
 import { HealthResponseSchema } from './modules/health/schemas.js';
 import { buildAuth } from './auth.js';
@@ -76,6 +76,37 @@ const __dirname = path.dirname(__filename);
 declare module 'fastify' {
   interface FastifyContextConfig {
     skipAuth?: boolean;
+  }
+  /**
+   * Compile-time contract for the six `app.decorate(...)` calls that
+   * `buildApp()` makes against the `FastifyInstance`. Without this block,
+   * a typo at a downstream call site (e.g. `app.aiProvier`) would compile
+   * cleanly because the decorated property is implicitly typed as
+   * `unknown`. With it, decorator consumers get full IntelliSense and
+   * mismatched types fail `tsc --noEmit`.
+   *
+   * Optional decorators (`artifactStorage`, `aiProvider`) are typed as
+   * `?` because they may be `undefined` when their feature is disabled
+   * (no AI configured; tests that don't need artifact storage).
+   *
+   * @see src/app.ts §2 (boot state), §7 (ORM), §8 (DI seams) — the
+   *      `app.decorate(...)` call sites this contract types.
+   * @see docs/planning/architecture.md §Layering and Dependency Direction
+   *      — the composition root seam these decorators expose.
+   */
+  interface FastifyInstance {
+    /** MikroORM root EntityManager — for shutdown and direct access. Per-request handlers must read `request.em`, not this. */
+    orm: MikroORM;
+    /** In-process or external event bus — `MemoryEventBus` in production, injected double in tests. */
+    eventBus: EventBus;
+    /** Artifact storage adapter — local FS in production, optional in tests. Undefined when not configured. */
+    artifactStorage?: ArtifactStorage;
+    /** AI provider — present only when `AI_PROVIDER` env is set or a test double is injected. */
+    aiProvider?: AiProvider;
+    /** Current boot lifecycle phase (`booting` | `migrating` | `ready`). Read by `/health`. */
+    getBootState(): BootState;
+    /** Setter for the boot state — called by the schema-sync sequence. */
+    setBootState(state: BootState): void;
   }
   interface FastifyRequest {
     /**
@@ -427,6 +458,33 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
    * Uses `reply.page()` for HTMX partial-vs-full-page branching:
    *   - Direct navigation → full layout with `layouts/main.eta`
    *   - HTMX request → `partials/home.eta` fragment
+   *
+   * COMPOSITION-ROOT INLINE REGISTRATION
+   *   This route is registered inline in `buildApp()` rather than extracted
+   *   to its own `src/modules/home/` module. That conforms to
+   *   `docs/planning/architecture.md §Code Conventions → File organization`
+   *   (the "trivial route" clause adjudicated in PR #77, with `/health`
+   *   as the canonical example): a single-line handler that does nothing
+   *   but render a static template is too small to justify the four-file
+   *   module shape (`routes.ts` + `service.ts` + `schemas.ts` + tests).
+   *
+   *   EXTRACTION THRESHOLD. Extract to `src/modules/home/` when ANY of:
+   *     - The handler grows beyond a single `reply.page()` call (i.e. it
+   *       starts loading data, branching on auth, or composing partials).
+   *     - A Zod body or querystring schema becomes necessary (filters,
+   *       pagination, search inputs).
+   *     - The route gains route-level config (per-route rate limit, custom
+   *       `preHandler`, idempotency-key handling).
+   *     - The home page module accretes sibling routes (`GET /about`,
+   *       `GET /pricing`) — at that point the directory pays for itself.
+   *
+   *   Until one of those triggers fires, keeping `GET /` inline keeps the
+   *   composition root readable: a reader scanning `buildApp()` top-to-
+   *   bottom sees the route alongside the `reply.page()` decorator that
+   *   defines its rendering contract, instead of having to chase an import.
+   *
+   * @see audit `audit-composition-root` finding #10 (option (b))
+   * @see docs/planning/architecture.md §Code Conventions → File organization
    */
   app.get('/', {
     schema: {},
@@ -600,6 +658,30 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   // -----------------------------------------------------------------------
 
   /**
+   * Closure-scoped cache for the empty-users redirect (Branch 1).
+   *
+   * The empty-users check runs `request.em.count(User)` on every authenticated
+   * request that isn't on the public-path allow-list. Once the first user
+   * exists, that count is monotonically `>0` for the lifetime of this app
+   * instance — the only way to remove users is via a DB-level operation
+   * that doesn't go through this server (no `DELETE FROM user` route
+   * exists in the MVP, and even if one were added it would terminate the
+   * "user table is empty" cliff which is a one-way transition by design).
+   *
+   * Once `usersBootstrapped` flips to `true`, the COUNT query stops firing
+   * entirely, eliminating one DB round-trip per authenticated page load /
+   * HTMX swap / API call.
+   *
+   * Scope: this `let` lives in the `buildApp()` closure, so each app
+   * instance gets its own cache. Each integration test that calls
+   * `buildApp({ db: ':memory:' })` gets a fresh `false` — no reset hook
+   * needed; the per-test app-rebuild is the reset.
+   *
+   * @see audit `audit-composition-root` finding #9
+   */
+  let usersBootstrapped = false;
+
+  /**
    * Global auth preHandler hook.
    *
    * Precedence (per `better-auth-session-and-api-tokens.md`):
@@ -609,11 +691,21 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
    *   4. Session cookie validation
    *   5. HTMX 200 with HX-Redirect: /login
    *
+   * Registered on the `preHandler` lifecycle stage (not `onRequest`) to match
+   * `docs/planning/architecture.md §Security` line 437 ("single global
+   * `preHandler` hook") and `skills/better-auth-session-and-api-tokens.md`.
+   * `preHandler` is the canonical Fastify stage for auth — it runs after
+   * routing and body parsing, so any future branch that needs to read
+   * `request.body` (e.g. a CSRF-double-submit check) Just Works without a
+   * stage migration. The per-request EM-fork hook above is `onRequest`
+   * deliberately, because every preHandler / handler downstream reads
+   * `request.em` and the fork must already be in place by that point.
+   *
    * In this story (INFRA-002), all branches are stubbed — the hook exists
    * so AUTH-001 only has to fill in the body of each branch, never
    * restructure the hook.
    */
-  app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
     const rawPath = request.url.split('?')[0] ?? '';
 
     // ── Branch 0: Static assets bypass auth entirely ──
@@ -629,14 +721,17 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     // ── Branch 1: Empty-users redirect to /setup ──
     // If the users table is empty, the app has never been configured.
     // Redirect ALL requests to /setup except the explicit allow-list:
-    //   /setup, /api/auth/*, /health, and static assets (/assets/*).
+    //   /setup, /api/auth/*, /health.
+    // Static assets (/assets/*) are NOT in this list — they're already
+    // bypassed unconditionally by Branch 0 above (which returns before this
+    // check runs). Listing `/assets/` here too would be dead code; if the
+    // prefix ever changes, the two copies would silently drift.
     // Browser clients get a 302 redirect; HTMX clients get HX-Redirect + 200.
     const isExemptFromEmptyCheck =
       rawPath === '/setup' ||
       rawPath.startsWith('/setup/') ||
       rawPath.startsWith('/api/auth/') ||
       rawPath === '/health' ||
-      rawPath.startsWith('/assets/') ||
       // `/__test__/*` is a reserved namespace used only by `e2e/test-server.ts`
       // (no `src/` route registers under it). E2E test routes already carry
       // `config: { skipAuth: true }`, but Branch 2's skipAuth bypass runs
@@ -646,7 +741,10 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       // skipAuth contract takes effect as documented.
       rawPath.startsWith('/__test__/');
 
-    if (!isExemptFromEmptyCheck) {
+    if (!isExemptFromEmptyCheck && !usersBootstrapped) {
+      // Cache miss — query the DB. Once `usersBootstrapped` flips to `true`,
+      // this block is skipped on all subsequent requests for the lifetime
+      // of this app instance (see `let usersBootstrapped` above).
       let userCount = 0;
       try {
         userCount = await request.em.count(User);
@@ -654,6 +752,8 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
         // The `user` table may not exist yet if Better Auth's schema migration
         // hasn't been run (e.g. fresh install before `npx auth migrate`).
         // Treat as zero users — redirect to /setup so the wizard can run.
+        // Leave `usersBootstrapped` false so we re-query on the next request
+        // (the table may be created by then).
         userCount = 0;
       }
       if (userCount === 0) {
@@ -665,6 +765,11 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
         }
         return reply.redirect('/setup');
       }
+      // First non-zero count: latch the cache. Future requests bypass the
+      // COUNT entirely. The transition `users empty → users present` is
+      // one-way for the lifetime of an app instance (no in-process route
+      // deletes the last user), so we never need to flip back to `false`.
+      usersBootstrapped = true;
     }
 
     // ── Branch 2: skipAuth bypass ──
