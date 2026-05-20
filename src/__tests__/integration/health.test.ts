@@ -174,19 +174,25 @@ describe('GET /health', () => {
   // ── Rate-limit headers ─────────────────────────────────────────────────
 
   describe('rate-limit headers', () => {
-    it('includes X-RateLimit-Limit header', async () => {
+    // DD-029 (`docs/planning/database-design.md:1181-1188`, `:1202`) requires
+    // the RFC 9728 draft-spec family `RateLimit-Limit`, `RateLimit-Remaining`,
+    // `RateLimit-Reset` and explicitly forbids the legacy `X-RateLimit-*`
+    // family. `@fastify/rate-limit` switches to the draft family when
+    // `enableDraftSpec: true` is set on the global registration (see
+    // src/app.ts:273). Node lowercases header names on the response side.
+    it('includes RateLimit-Limit header (DD-029 draft-spec)', async () => {
       const res = await app.inject({ method: 'GET', url: '/health' });
-      expect(res.headers['x-ratelimit-limit']).toBeDefined();
+      expect(res.headers['ratelimit-limit']).toBeDefined();
     });
 
-    it('rate limit is set to 600', async () => {
+    it('rate limit is set to 600 (DD-012 :1171 "General authenticated API")', async () => {
       const res = await app.inject({ method: 'GET', url: '/health' });
-      expect(res.headers['x-ratelimit-limit']).toBe('600');
+      expect(res.headers['ratelimit-limit']).toBe('600');
     });
 
-    it('includes X-RateLimit-Remaining header', async () => {
+    it('includes RateLimit-Remaining header (DD-029 draft-spec)', async () => {
       const res = await app.inject({ method: 'GET', url: '/health' });
-      expect(res.headers['x-ratelimit-remaining']).toBeDefined();
+      expect(res.headers['ratelimit-remaining']).toBeDefined();
     });
   });
 });

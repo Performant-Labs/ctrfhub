@@ -185,9 +185,15 @@ describe('T1 Headless — security headers on HTML response', () => {
     expect(res.headers['cross-origin-opener-policy']).toBe('same-origin');
   });
 
-  it('includes X-RateLimit-Limit: 600', async () => {
+  // DD-029 (`docs/planning/database-design.md:1181-1188`, `:1202`) requires
+  // the RFC 9728 draft-spec `RateLimit-Limit` header and explicitly forbids
+  // the legacy `X-RateLimit-Limit` form. `@fastify/rate-limit` switches to
+  // the draft family when `enableDraftSpec: true` is set on the global
+  // registration (see src/app.ts:273). The limit value is the DD-012 :1171
+  // "General authenticated API" row.
+  it('includes RateLimit-Limit: 600 (DD-029 draft-spec)', async () => {
     const res = await app.inject({ method: 'GET', url: '/setup/__test__/partial' });
-    expect(res.headers['x-ratelimit-limit']).toBe('600');
+    expect(res.headers['ratelimit-limit']).toBe('600');
   });
 });
 
