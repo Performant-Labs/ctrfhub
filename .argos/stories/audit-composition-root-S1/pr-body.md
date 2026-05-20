@@ -70,7 +70,8 @@ none
 
 ## Spec-enforcer verdict
 
-_Pending — S audit runs at Phase 6.2 before this PR is opened._
+**PASS** — see `.argos/stories/audit-composition-root-S1/spec-audit-1.md` (0 block, 0 warn, 0 nit). S concurred with A's verdicts on the three flagged decisions and confirmed T's 4 pre-existing-test updates are on-role contract correction (intent preserved; header-name strings updated to match DD-029 with inline citations).
+**Date:** 2026-05-20
 
 ---
 _Generated from `.argos/stories/audit-composition-root-S1/pr-body.md`._
