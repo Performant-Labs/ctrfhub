@@ -92,7 +92,8 @@ None.
 
 ## Spec-enforcer verdict
 
-_To be filled in by Argos after Phase 6.2 / Phase 6b completes._
+**PASS** — see `.argos/stories/audit-composition-root-S3/spec-audit-1.md` (0 block, 0 warn, 0 nit; iteration 1, no remediation needed). S confirmed (a) zero `docs/planning/*` edits — `git diff --name-only -- docs/planning/` empty; (b) T's test-file edits are JSDoc-only (lines 6, 16 of `static-asset-auth-bypass.test.ts` — no `it(…)`/`describe(…)`/`expect(…)` altered); (c) all five findings close per the canonical patterns named in `architecture.md` / `skills/*`: `FastifyInstance` augmentation slots cleanly with 1:1 field-to-decoration mapping and honest optionality; auth hook renamed to `preHandler` with JSDoc citing `architecture.md §Security:437` and the better-auth skill; redundant `/assets/` line removed with an asymmetry-justifying comment; `usersBootstrapped` cache closure-scoped and exception-safe; inline-`GET /` JSDoc substantive and cites the §File organization trivial-route clause verbatim with a four-condition extraction threshold; (d) T's skip of the optional finding-#9 unit test is well-justified (spying on per-request EM is non-trivial; existing integration coverage guards the behavioural invariant); (e) forbidden-pattern sweep clean; (f) the `rate-limit-and-auth-log.test.ts:139` `onRequest` reference correctly survives the rename — it refers to `@fastify/rate-limit`'s route-level hooks, not the auth hook.
+**Date:** 2026-05-20
 
 ---
 _Generated from `.argos/stories/audit-composition-root-S3/pr-body.md`. If you edit the PR description directly on GitHub, the `.argos/` source will not reflect those edits._
