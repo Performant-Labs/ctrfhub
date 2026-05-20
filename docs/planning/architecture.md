@@ -526,7 +526,9 @@ The existing DD-014 CORS headers (`Access-Control-Allow-Origin: trace.playwright
 
 `GET /health` — unauthenticated. Readiness-shaped: returns 200 **only after the `api` process has completed boot** (including schema sync). Used by Docker compose `healthcheck`, upstream load balancers, and Kubernetes probes to decide whether to route traffic to this instance.
 
-The process tracks a `bootState` value that transitions through: `booting → migrating → ready`. The `migrating` state is retained for backward compatibility but now represents the schema-generator sync phase (`orm.schema.updateSchema()`) rather than running migration files (INFRA-005 pivot). If schema sync fails, `bootState` moves to `failed` and the process exits non-zero so the orchestrator restarts it.
+**MVP boot behaviour (read this first).** In MVP the API process is **not listening** during schema sync — `buildApp()` runs schema sync to completion *before* `app.listen()` returns (`src/index.ts`). A probe arriving during that window therefore sees **connection-refused**, not 503. The `start_period: 30s` on the Docker compose healthcheck is what tolerates the early-boot window; it is the real MVP guarantee. If schema sync fails the process exits non-zero so the orchestrator restarts it.
+
+The process tracks a `bootState` value that transitions through: `booting → migrating → ready`. In MVP only the `ready` (and `ready`-with-DB-unreachable) rows of the status table below are observable from outside the process — the `booting` and `migrating` 503 rows are unreachable in production today and are retained for forward compatibility. The `migrating` state represents the schema-generator sync phase (`orm.schema.updateSchema()`) rather than running migration files (INFRA-005 pivot).
 
 **Response shape:**
 
@@ -538,10 +540,10 @@ The process tracks a `bootState` value that transitions through: `booting → mi
 
 | `bootState` | HTTP | `status` | Notes |
 |---|---|---|---|
-| `booting` | 503 | `booting` | Process started; schema sync hasn't begun yet (rare, narrow window) |
-| `migrating` | 503 | `migrating` | `orm.schema.updateSchema()` is running; **must return 503** to prevent LBs routing traffic to a DB undergoing DDL |
-| `ready` | 200 | `ok` | Schema sync complete, DB reachable, Redis reachable (if configured) |
-| `ready` but DB unreachable | 503 | `error` | Pool exhaustion or connectivity failure after successful boot |
+| `booting` | 503 | `booting` | Forward-compat only — **unreachable in MVP** (the server isn't listening during this window; probes get connection-refused). Retained so a future restructure that registers `/health` and calls `app.listen()` before schema sync can return a real 503 here. |
+| `migrating` | 503 | `migrating` | Forward-compat only — **unreachable in MVP** (same reason). If a future restructure exposes the schema-generator window, this is the row a probe would see — connection-refused becomes 503-during-DDL and load balancers stop routing traffic to a DB undergoing schema changes. |
+| `ready` | 200 | `ok` | Schema sync complete, DB reachable, Redis reachable (if configured). This is the **only** 200 row. |
+| `ready` but DB unreachable | 503 | `error` | Pool exhaustion or connectivity failure after successful boot. This is the operative 503 row in MVP. |
 
 **Checks performed (only in `ready` state):**
 - **DB:** `SELECT 1` — catches pool exhaustion and connectivity failures
@@ -550,7 +552,9 @@ The process tracks a `bootState` value that transitions through: `booting → mi
 
 **Why readiness, not liveness:** A separate `GET /livez` (returns 200 whenever the process is running, ignoring DB and schema sync) can be added later if k8s deployments need to distinguish "kill this pod" from "don't route to this pod". For MVP, single-container deployments don't benefit from the distinction — the Docker healthcheck behaviour we need is readiness (route to me when ready).
 
-**Schema sync window (why this contract matters):** If `/health` returned 200 before schema sync finished, a load balancer could route traffic to an instance whose schema doesn't match the application's expectations, producing 500s on every request until sync completes. The compose `start_period: 30s` is a fallback, not a guarantee — schema sync on a cold Postgres can take a few seconds. The 503-during-sync contract is the real guarantee.
+**Schema sync window (why early-boot probes are connection-refused, not 503).** A load balancer that started routing traffic to an instance whose schema doesn't match the application's expectations would see 500s on every request until sync completes. In MVP we prevent that by **not opening the listening socket until schema sync resolves** — probes during sync get connection-refused (which every load balancer treats the same as 503-not-ready) and the compose `start_period: 30s` absorbs the cold-start window. On a cold Postgres, schema sync can take a few seconds; `start_period` is sized to swallow that comfortably.
+
+A future restructure could register `/health` and call `app.listen()` *before* schema sync, so probes during sync receive an actual 503-with-body — useful in deployments that need to distinguish "starting" from "process dead" without relying on the `start_period` heuristic. That restructure is out of scope for MVP; the rows in the table above are retained so the contract is defined when the restructure lands.
 
 **Worker startup (note on `depends_on: service_healthy`):** `deployment-architecture.md` uses `depends_on: { api: { condition: service_healthy } }` on the `worker` container specifically to guarantee schema sync has completed before the worker boots. That `depends_on` clause is load-bearing — it is the only reason the worker can safely assume schema is applied.
 

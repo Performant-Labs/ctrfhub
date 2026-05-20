@@ -13,6 +13,8 @@ export { generateSummary } from './summarizer.js';
 export { startSweeper } from './sweeper.js';
 export { recoverStalePipelineRows } from './recovery.js';
 export { isAiCloudPipelineConsented } from './consent.js';
+export { wireAiPipeline } from './wire.js';
+export type { WireAiPipelineDeps, WiredAiPipeline } from './wire.js';
 export {
   CategorizeOutputSchema,
   CorrelateOutputSchema,
