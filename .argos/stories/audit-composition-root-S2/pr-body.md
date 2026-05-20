@@ -84,7 +84,8 @@ None.
 
 ## Spec-enforcer verdict
 
-_To be filled in by Argos after Phase 6.2 / Phase 6b completes._
+**PASS** — see `.argos/stories/audit-composition-root-S2/spec-audit-1.md` (0 block, 0 warn, 0 nit; iteration 1, no remediation needed). S confirmed (a) the single authorized `docs/planning/*` edit is confined to `architecture.md §Health endpoint`; (b) `deployment-architecture.md` is byte-identical to `origin/main` (F correctly flagged-not-edited); (c) the rewritten spec is internally consistent with the code that ships (`'migrating'` stays in `BootState`, table marks it forward-compat unreachable for the documented reason); (d) `wireAiPipeline()` lives at the right altitude with shutdown sequencing retained at the composition root; (e) the consolidated `onClose` runs in dependency-correct forward order with the spec citation; (f) the runtime EventBus guard is genuinely gone and the tightened test double honours the interface; (g) the JSDocs at `app.ts:14` and the `/health` route handler match the rewritten spec; (h) test tiers match the brief exactly (1 new unit test; the dropped `/health` 503-during-sync integration test is correctly absent per D-2); (i) forbidden-pattern sweep clean.
+**Date:** 2026-05-20
 
 ---
 _Generated from `.argos/stories/audit-composition-root-S2/pr-body.md`. If you edit the PR description directly on GitHub, the `.argos/` source will not reflect those edits._
