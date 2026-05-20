@@ -3,9 +3,15 @@
  *
  * Layer 2: `fastify.inject()` with SQLite in-memory.
  *
- * Covers the Branch 0 early-return added to the global `onRequest` auth hook
+ * Covers the Branch 0 early-return added to the global `preHandler` auth hook
  * in `src/app.ts`: any `/assets/*` request must bypass auth entirely and be
  * served by `@fastify/static` — even with NO session cookie and NO API token.
+ *
+ * Note: the auth hook was renamed from `onRequest` to `preHandler` in story
+ * `audit-composition-root-S3` (finding #5) to align with the architecture
+ * doc's "single global `preHandler` hook" wording. The Branch 0 semantics
+ * tested here are unchanged by that rename — the hook still fires on every
+ * request and still short-circuits `/assets/*` before any auth decision.
  *
  * The two properties under test (both required by acceptance criterion 3 of
  * the story brief):
@@ -13,7 +19,7 @@
  *   2. The auth posture for every NON-asset route is unchanged — i.e. Branch 0
  *      did not weaken auth for anything that does not start with `/assets/`.
  *
- * @see src/app.ts §9 — global onRequest auth hook, Branch 0
+ * @see src/app.ts §9 — global preHandler auth hook, Branch 0
  * @see .argos/stories/ctrfhub-docker-build-fix/feature-handoff.md
  * @see skills/vitest-three-layer-testing.md §Layer 2
  */
