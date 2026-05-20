@@ -25,6 +25,7 @@
  * @see docs/planning/architecture.md §Backend, §CSP, §Graceful Shutdown
  */
 
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
@@ -223,9 +224,134 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   // -----------------------------------------------------------------------
   // 4. @fastify/rate-limit — global default 600/min
   // -----------------------------------------------------------------------
+  // Aligned with `database-design.md §DD-012` Layer 2 row
+  // "General authenticated API | 600 req/min | session-user-id |
+  // `@fastify/rate-limit` default store" and `§DD-029` (429 response contract +
+  // observability rule).
+  //
+  // KEY GENERATOR
+  //   The plugin runs *before* the global auth preHandler (step 9), so on a
+  //   request's first pass `request.user` and `request.apiKeyUser` are still
+  //   undefined. The fallback chain matches DD-012's intent: authenticated
+  //   browser sessions key on Better Auth's `request.user.id`; authenticated
+  //   CI requests key on the API key owner's `referenceId` (Better Auth 1.x's
+  //   canonical user-id field on an apikey row — see `src/auth.ts ApiKeyUser`);
+  //   everything else falls back to `request.ip`. Collapsing the
+  //   unauthenticated-then-authenticated lookup into a single function avoids
+  //   the "all unauthenticated traffic shares one bucket" trap that simpler
+  //   keyGenerators fall into.
+  //
+  // 429 CONTRACT (DD-029 point 4)
+  //   - `enableDraftSpec: true` switches the plugin's default header family
+  //     from the legacy `X-RateLimit-*` to the RFC 9728 draft `RateLimit-*`,
+  //     matching DD-029's explicit "do NOT emit the non-standard
+  //     `X-RateLimit-*` variant" stance. `Retry-After` is still emitted (for
+  //     older-client compatibility).
+  //   - `errorResponseBuilder` shapes the JSON body for `/api/v1/*` (and any
+  //     other non-`/hx/*` path) as
+  //     `{"error":"rate_limited","code":"too_many_requests","retry_after_s":<int>}`.
+  //   - For `/hx/*` routes, the builder attaches an `HX-Trigger: rate-limited`
+  //     header (non-enumerable, applied by Fastify's `setErrorHeaders`); a
+  //     paired global `onSend` hook below rewrites the body to empty bytes so
+  //     Alpine's `htmx:trigger` listener consumes the toast event without a
+  //     stray JSON payload swap. No `/hx/*` routes exist on `main` today; the
+  //     split is installed pre-emptively so the contract is correct when the
+  //     dashboard story lands.
+  //
+  // OBSERVABILITY (DD-029 point 7)
+  //   `onExceeded` emits a single Pino `event=ratelimit.exceeded` line. The
+  //   limiter key is hashed (first 8 hex chars of SHA-256) so repeat-offender
+  //   patterns are visible without writing raw IPs / user-ids / token-ids to
+  //   the log stream. The Prometheus counter
+  //   `ctrfhub_ratelimit_exceeded_total{endpoint,backend}` mentioned in DD-029
+  //   is **explicitly deferred** — no Prometheus integration exists yet; this
+  //   block will gain the increment alongside that wiring.
   await app.register(fastifyRateLimit, {
     max: 600,
     timeWindow: '1 minute',
+    // RFC 9728 draft headers only — DD-029 forbids the `X-RateLimit-*` family.
+    enableDraftSpec: true,
+    keyGenerator: (request: FastifyRequest) => {
+      // Post-auth: prefer session-user-id (browser), then API-key owner-id
+      // (CI), then IP. Pre-auth (first preHandler ordering): both auth
+      // properties are undefined, so we fall through to IP — which is what
+      // DD-012 expects for unauthenticated traffic anyway.
+      return (
+        request.user?.id ??
+        request.apiKeyUser?.referenceId ??
+        request.ip
+      );
+    },
+    errorResponseBuilder: (request, context) => {
+      // `context.ttl` is the milliseconds until the bucket resets; the
+      // canonical DD-029 body field is `retry_after_s` (seconds, integer).
+      const retryAfterS = Math.ceil(context.ttl / 1000);
+      const rawPath = request.url.split('?')[0] ?? '';
+      const isHxRoute = rawPath.startsWith('/hx/');
+
+      const body: {
+        statusCode: number;
+        error: string;
+        code: string;
+        retry_after_s: number;
+      } = {
+        statusCode: 429,
+        error: 'rate_limited',
+        code: 'too_many_requests',
+        retry_after_s: retryAfterS,
+      };
+
+      if (isHxRoute) {
+        // `headers` is read by Fastify's `setErrorHeaders` via direct property
+        // access (not iteration), so making it non-enumerable keeps it out of
+        // the JSON-serialized body. The paired `onSend` hook below rewrites
+        // the `/hx/*` body to empty bytes per the DD-029 `/hx/*` row.
+        Object.defineProperty(body, 'headers', {
+          value: { 'HX-Trigger': 'rate-limited' },
+          enumerable: false,
+        });
+      }
+
+      return body;
+    },
+    onExceeded: (request: FastifyRequest, key: string) => {
+      // DD-029 point 7: hash the limiter key (first 8 hex of SHA-256) so
+      // repeat-offender patterns surface in the log without leaking raw
+      // IPs / user-ids / token-ids.
+      const keyHash = createHash('sha256').update(String(key)).digest('hex').slice(0, 8);
+      request.log.warn(
+        {
+          event: 'ratelimit.exceeded',
+          keyHash,
+          endpoint: `${request.method} ${request.url.split('?')[0] ?? ''}`,
+        },
+        'Rate limit exceeded',
+      );
+    },
+  });
+
+  // -----------------------------------------------------------------------
+  // 4a. /hx/* 429 empty-body rewrite (DD-029 point 4)
+  // -----------------------------------------------------------------------
+  // The rate-limit `errorResponseBuilder` cannot itself produce a zero-byte
+  // body — its return value is JSON-serialized by Fastify's default reply
+  // path. For `/hx/*` routes, DD-029 mandates an empty body plus the
+  // `HX-Trigger: rate-limited` header (set on the error object by the
+  // builder). This `onSend` hook detects the rate-limit 429 on an `/hx/*`
+  // route and strips the JSON payload before bytes go out, leaving the
+  // header intact for Alpine's toast renderer.
+  //
+  // The narrow trigger (status 429 AND path-prefix `/hx/`) means this hook
+  // is a no-op for every other request, including the JSON 429 path for
+  // `/api/v1/*` and other URLs.
+  app.addHook('onSend', async (request, reply, payload) => {
+    if (reply.statusCode !== 429) return payload;
+    const rawPath = request.url.split('?')[0] ?? '';
+    if (!rawPath.startsWith('/hx/')) return payload;
+    // Replace payload with an empty buffer; content-length is recomputed by
+    // Fastify when payload changes in `onSend`.
+    reply.header('content-length', '0');
+    return '';
   });
 
   // -----------------------------------------------------------------------
@@ -578,6 +704,31 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       // Invalid key — do not fall through to session or HTMX-401.
       // Return 401 immediately to prevent timing attacks where an invalid
       // key would otherwise trigger a session lookup.
+      //
+      // Observability: emit a single Pino structured-log line before the
+      // 401 so operators can diagnose a misconfigured CI client that is
+      // silently failing ingest. Cited by `architecture.md §Code
+      // Conventions → Logging`: "the auth subsystem and ingest routes log
+      // decisions (e.g. invalid API key) without logging the token value."
+      //
+      // The raw `apiToken` value MUST NOT appear in any log field. The
+      // brief's finding #6 draft suggested `tokenPrefix: apiToken.slice(0, 8)`
+      // — rejected here because `ctrf_*` tokens have a known literal prefix
+      // and the first 8 chars leak a partial value. We omit the prefix
+      // entirely and correlate via `ip` alone, which is what an operator
+      // needs to find the offending CI client. A hashed-prefix variant was
+      // considered (parallel to the 429 observability hash) but rejected
+      // for S1: it adds correlator ambiguity ("is this a key hash or a
+      // user hash?") without enabling cross-request correlation that the
+      // IP doesn't already provide. (Decision documented in
+      // feature-handoff.md iteration 1.)
+      request.log.warn(
+        {
+          event: 'auth.api_key_invalid',
+          ip: request.ip,
+        },
+        'Invalid API key on x-api-token',
+      );
       return reply.status(401).send({ error: 'Invalid API key', code: 'INVALID_API_KEY' });
     }
 
