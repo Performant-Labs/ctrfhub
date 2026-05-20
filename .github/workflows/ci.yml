@@ -216,8 +216,12 @@ jobs:
           POSTGRES_DB: ctrfhub
         ports:
           - 5432:5432
+        # pg_isready without -U defaults to the OS user inside the container
+        # (root), which postgres logs as `FATAL: role "root" does not exist`
+        # every health-interval. The check still passes (server is reachable),
+        # but the log spam misleads triage. Pass the seeded role to silence it.
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U ctrfhub -d ctrfhub"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
