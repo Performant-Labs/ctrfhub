@@ -2,7 +2,7 @@
 
 **Branch:** `story/audit-composition-root-S3`
 **Commits added by Test-writer:**
-- (to be filled in by the upcoming commit) `test(audit-composition-root-S3): align stale onRequest comments in static-asset-auth-bypass.test.ts after finding-#5 rename`
+- `25b36c3` `test(audit-composition-root-S3): regression check + comment alignment`
 
 ## Narrative
 
