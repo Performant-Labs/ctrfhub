@@ -521,7 +521,15 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       rawPath.startsWith('/setup/') ||
       rawPath.startsWith('/api/auth/') ||
       rawPath === '/health' ||
-      rawPath.startsWith('/assets/');
+      rawPath.startsWith('/assets/') ||
+      // `/__test__/*` is a reserved namespace used only by `e2e/test-server.ts`
+      // (no `src/` route registers under it). E2E test routes already carry
+      // `config: { skipAuth: true }`, but Branch 2's skipAuth bypass runs
+      // *after* this Branch 1 redirect, so without this exemption an E2E
+      // request to /__test__/home gets 302→/setup→404 even though the test
+      // server seeds a user at startup. Exempt the namespace so Branch 2's
+      // skipAuth contract takes effect as documented.
+      rawPath.startsWith('/__test__/');
 
     if (!isExemptFromEmptyCheck) {
       let userCount = 0;
