@@ -312,7 +312,14 @@ describe('shutdown lifecycle', () => {
   });
 
   it('DI seam close() methods are called during shutdown', async () => {
-    // Track close calls with minimal DI doubles
+    // Track close calls with minimal DI doubles.
+    //
+    // NOTE (audit-composition-root-S2 finding #7): the EventBus double
+    // here implements the full `publish` / `subscribe` / `close` contract
+    // (subscribe/publish are no-ops). The composition root no longer
+    // carries a runtime guard that papers over partial doubles — the
+    // type system enforces the interface. See
+    // `.argos/stories/audit-composition-root-S2/feature-handoff.md`.
     let eventBusClosed = false;
     let artifactStorageClosed = false;
     let aiProviderClosed = false;
@@ -321,6 +328,8 @@ describe('shutdown lifecycle', () => {
       testing: true,
       db: ':memory:',
       eventBus: {
+        publish: () => { /* no-op */ },
+        subscribe: () => { /* no-op */ },
         close: async () => { eventBusClosed = true; },
       },
       artifactStorage: {

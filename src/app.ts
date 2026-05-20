@@ -11,7 +11,9 @@
  * - @fastify/static (serves compiled Tailwind CSS from src/assets/)
  * - @fastify/view (Eta template engine, root src/views/)
  * - Global auth preHandler hook (skeleton — real logic in AUTH-001)
- * - GET /health (readiness probe — 503 during boot, 200 when ready)
+ * - GET /health (readiness probe — 200 when ready; the process is not
+ *   listening before schema sync completes, so early-boot probes see
+ *   connection-refused rather than 503)
  * - MikroORM lifecycle (init, per-request em fork, shutdown)
  * - Schema sync at boot (schema-generator, not migrator — INFRA-005)
  * - Graceful shutdown (SIGTERM/SIGINT → close sequence)
@@ -50,17 +52,10 @@ import { buildAuth } from './auth.js';
 import { User } from './entities/index.js';
 import { registerAuthRoutes } from './modules/auth/routes.js';
 import ingestPlugin from './modules/ingest/routes.js';
-import { MemoryEventBus, RunEvents } from './services/event-bus.js';
-import type { RunIngestedPayload, AiStageEventPayload } from './services/event-bus.js';
+import { MemoryEventBus } from './services/event-bus.js';
 import { createAiProvider } from './services/ai/index.js';
 import { LocalArtifactStorage } from './lib/local-artifact-storage.js';
-import {
-  categorizeRun,
-  correlateRootCauses,
-  generateSummary,
-  recoverStalePipelineRows,
-  startSweeper,
-} from './services/ai/pipeline/index.js';
+import { wireAiPipeline } from './services/ai/pipeline/index.js';
 
 // ---------------------------------------------------------------------------
 // Module-private: resolve __dirname for ESM (needed by @fastify/static root)
@@ -364,29 +359,18 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   }
   currentBootState = 'ready';
 
-  // Register ORM cleanup on shutdown
-  app.addHook('onClose', async () => {
-    await orm.close();
-  });
-
   // -----------------------------------------------------------------------
-  // 8. DI seam cleanup on shutdown (event bus, artifact storage, AI provider)
+  // 8. DI seams — instantiate and decorate (shutdown is consolidated below)
   // -----------------------------------------------------------------------
 
   // EventBus — always present. Tests inject via `options.eventBus`;
   // production/dev falls back to an in-process MemoryEventBus.
   const eventBus = options.eventBus ?? new MemoryEventBus();
   app.decorate('eventBus', eventBus);
-  app.addHook('onClose', async () => {
-    await eventBus.close();
-  });
 
   const artifactStorage = options.artifactStorage ?? (testing ? undefined : new LocalArtifactStorage());
   if (artifactStorage) {
     app.decorate('artifactStorage', artifactStorage);
-    app.addHook('onClose', async () => {
-      await artifactStorage.close();
-    });
   }
 
   // AiProvider — injected by tests via `options.aiProvider`; in production
@@ -397,88 +381,73 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       ? undefined
       : createAiProvider()
   );
+
+  // ── AI pipeline wiring (boot-recovery + 3 subscribers + sweeper) ──
+  // The wireAiPipeline() function in `src/services/ai/pipeline/wire.ts`
+  // encapsulates the pipeline's composition; the composition root only
+  // sees a single function call here and gets back a `stopSweeper`
+  // handle to sequence shutdown below. When aiProvider is undefined
+  // (no AI configured), the pipeline stays dormant.
+  // @see src/services/ai/pipeline/wire.ts
+  let stopSweeper: (() => void) | undefined;
   if (aiProvider) {
     app.decorate('aiProvider', aiProvider);
-    app.addHook('onClose', async () => {
-      await aiProvider.close();
-    });
-
-    // ── AI pipeline boot-time recovery + subscription ───────────────
-    // Only wire the pipeline if the eventBus supports the full interface
-    // (subscribe + publish). Minimal test doubles that only implement
-    // close() are left alone — the pipeline simply doesn't activate.
-    if (typeof eventBus.subscribe === 'function' && typeof eventBus.publish === 'function') {
-      // Reclaim crashed-worker rows and re-enqueue pending stages before
-      // subscribing to events. This ensures work from a previous crash
-      // is picked up before new events are processed.
-      // @see skills/ai-pipeline-event-bus.md §Boot-time recovery
-      try {
-        await recoverStalePipelineRows(orm, eventBus);
-      } catch (err) {
-        app.log.error({ err }, 'AI pipeline boot-time recovery failed — pipeline may miss stale rows');
-        // Non-fatal: the pipeline can still process new events even if
-        // recovery fails. The stuck-stage sweeper will catch them later.
-      }
-
-      // Subscribe to run.ingested in the 'ai' consumer group. Each event
-      // triggers the A1 categorization stage which uses its own forked EM
-      // (not request.em — this is an EventBus subscriber, not an HTTP handler).
-      // @see skills/ai-pipeline-event-bus.md §Event chain
-      eventBus.subscribe('ai', RunEvents.RUN_INGESTED, async (rawPayload) => {
-        const payload = rawPayload as RunIngestedPayload;
-        try {
-          await categorizeRun(payload, aiProvider, orm, eventBus);
-        } catch (err) {
-          app.log.error(
-            { err, runId: payload.runId },
-            'A1 categorization failed — unhandled error in categorizeRun',
-          );
-          // Swallowed: EventBus handlers must not propagate errors.
-          // The reserve-execute-commit pattern handles retries internally.
-        }
-      });
-
-      // ── A2: root cause correlation ──────────────────────────────
-      // Subscribes to run.ai_categorized. Handles partial:true from
-      // upstream terminal failures by treating uncategorized results
-      // as 'unknown' category.
-      eventBus.subscribe('ai', RunEvents.RUN_AI_CATEGORIZED, async (rawPayload) => {
-        const payload = rawPayload as AiStageEventPayload;
-        try {
-          await correlateRootCauses(payload, aiProvider, orm, eventBus);
-        } catch (err) {
-          app.log.error(
-            { err, runId: payload.runId },
-            'A2 correlation failed — unhandled error in correlateRootCauses',
-          );
-        }
-      });
-
-      // ── A3: run narrative summary ───────────────────────────────
-      // Subscribes to run.ai_correlated. Handles partial:true by
-      // skipping A2 root cause cluster data in the summary input.
-      eventBus.subscribe('ai', RunEvents.RUN_AI_CORRELATED, async (rawPayload) => {
-        const payload = rawPayload as AiStageEventPayload;
-        try {
-          await generateSummary(payload, aiProvider, orm, eventBus);
-        } catch (err) {
-          app.log.error(
-            { err, runId: payload.runId },
-            'A3 summary generation failed — unhandled error in generateSummary',
-          );
-        }
-      });
-
-      // ── Stuck-stage sweeper ─────────────────────────────────────
-      // Runs every 60s to detect rows that are stuck in 'running'
-      // state (crash before catch handler). Terminal-fails exhausted
-      // rows (attempt >= 3) so downstream stages can proceed.
-      const stopSweeper = startSweeper(orm, eventBus);
-      app.addHook('onClose', async () => {
-        stopSweeper();
-      });
-    }
+    const wired = await wireAiPipeline(app, { eventBus, aiProvider, orm });
+    stopSweeper = wired.stopSweeper;
   }
+
+  // -----------------------------------------------------------------------
+  // 8b. Consolidated shutdown — one onClose, explicit forward order
+  // -----------------------------------------------------------------------
+  //
+  // Teardown order is dependency-correct AS WRITTEN — top-to-bottom is the
+  // order things actually shut down. We deliberately consolidate into a
+  // single onClose hook (rather than five hooks relying on Fastify's
+  // undocumented LIFO contract) so a future maintainer reading this file
+  // top-to-bottom can see the sequence at a glance.
+  //
+  // Order (per architecture.md §Production Deployment → Graceful shutdown):
+  //   1. sweeper        — stop scheduling new AI work
+  //   2. aiProvider     — drain in-flight LLM calls, release SDK clients
+  //   3. artifactStorage — close file handles / S3 clients
+  //   4. eventBus       — drain pending handlers
+  //   5. orm            — close DB pool last (every other layer used it)
+  //
+  // Each step is wrapped so a failure in one teardown doesn't skip the
+  // remainder — operationally the process is exiting either way.
+  app.addHook('onClose', async () => {
+    if (stopSweeper) {
+      try {
+        stopSweeper();
+      } catch (err) {
+        app.log.error({ err }, 'AI sweeper stop failed during shutdown');
+      }
+    }
+    if (aiProvider) {
+      try {
+        await aiProvider.close();
+      } catch (err) {
+        app.log.error({ err }, 'AiProvider close failed during shutdown');
+      }
+    }
+    if (artifactStorage) {
+      try {
+        await artifactStorage.close();
+      } catch (err) {
+        app.log.error({ err }, 'ArtifactStorage close failed during shutdown');
+      }
+    }
+    try {
+      await eventBus.close();
+    } catch (err) {
+      app.log.error({ err }, 'EventBus close failed during shutdown');
+    }
+    try {
+      await orm.close();
+    } catch (err) {
+      app.log.error({ err }, 'ORM close failed during shutdown');
+    }
+  });
 
   // -----------------------------------------------------------------------
   // 9. Global auth preHandler — skeleton (real logic lands in AUTH-001)
@@ -616,9 +585,18 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   /**
    * Health / readiness endpoint.
    *
-   * - Returns 503 while `bootState` is `booting` or `migrating`
-   * - Returns 200 when `ready` and DB responds to `SELECT 1`
+   * MVP behaviour:
+   * - The process is **not listening** until `buildApp()` resolves (i.e.
+   *   after schema sync). Probes that arrive during boot therefore see
+   *   connection-refused — not 503. The `start_period: 30s` on the
+   *   Docker compose healthcheck absorbs this window.
+   * - Returns 200 when `bootState` is `ready` and DB responds to `SELECT 1`.
    * - Returns 503 with `status: 'error'` if DB is unreachable after boot
+   *   (pool exhaustion / connectivity failure).
+   * - The `booting` / `migrating` 503 branches below are retained for
+   *   forward compatibility — a future restructure may register `/health`
+   *   and call `app.listen()` before schema sync, at which point the
+   *   503-during-sync contract becomes reachable. Today it is not.
    *
    * Skips auth (unauthenticated — used by Docker healthcheck, LBs, k8s probes).
    *
