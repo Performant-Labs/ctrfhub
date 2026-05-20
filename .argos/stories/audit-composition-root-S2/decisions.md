@@ -30,3 +30,13 @@ The phrase **"Do not restructure the boot sequence"** could be read narrowly ("d
 **Optional `BootState` enum cleanup.** Whether to remove `'migrating'` from the `BootState` union in `src/types.ts` is left as F's call (documented in brief's Implementer notes). Either choice is consistent with the override's intent.
 
 **Surfaced to André.** Inline in the brief; he sees this when reviewing the PR.
+
+## D-3 — Brief had stale event-name strings; T used the canonical `RunEvents` constants (Phase 4, 2026-05-20)
+
+**Context.** The brief listed the AI-pipeline event topics as `run.completed` / `run.ai-categorized` / `run.ai-correlated` (hyphenated) under "Critical test paths" and the wireAiPipeline unit-test guidance. T discovered the canonical constants in `src/services/event-bus.ts` (`RunEvents`) are `run.ingested` / `run.ai_categorized` / `run.ai_correlated` (underscored, and the first topic is `ingested`, not `completed`).
+
+**Call.** No re-spawn, no fix-pass. T followed the brief's own directive ("confirm event-name constants by reading … `wire.ts` — do not invent them"), referenced the `RunEvents` symbols directly in the new unit test, and noted the discrepancy in its handoff. The test asserts subscriptions on the canonical constants and is therefore correct regardless of how the brief text drifted.
+
+**Rationale.** The brief drift originated in Argos's Phase-1 transcription from the audit findings (which use the same hyphenated forms as a paraphrase, not as the literal constants). It is a paperwork error, not an implementation problem — the code uses the constants, the test uses the constants, the audit findings are about altitude, not topic names. Re-spawning F to "fix" the brief would burn a cycle for zero behaviour change.
+
+**Surfaced to André.** Noted in T's `test-handoff.md` and here for the audit trail. No action required.
