@@ -166,7 +166,7 @@ npm install
 
 # 2. Copy env template
 cp .env.example .env
-# Edit .env — set SESSION_SECRET and PUBLIC_URL at minimum; choose SQLITE or Postgres dialect
+# Edit .env — set BETTER_AUTH_SECRET and PUBLIC_URL at minimum; choose SQLITE or Postgres dialect
 
 # 3. Start the full dev stack
 docker compose -f compose.dev.yml up
@@ -287,7 +287,7 @@ Stage 2 — runner
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `SESSION_SECRET` | ✅ | — | Min 32-char random string; signs session cookies |
+| `BETTER_AUTH_SECRET` | ✅ | — | Min 32-char random string; consumed by Better Auth (`buildAuth()` in `src/auth.ts`) to sign session cookies. Name dictated by the Better Auth library. |
 | `PUBLIC_URL` | ✅ | — | Public base URL (e.g. `https://ctrfhub.example.com`); used for auth redirects |
 | `DATABASE_URL` | Postgres only | — | `postgresql://user:pass@db:5432/ctrfhub` |
 | `SQLITE_PATH` | SQLite only | `/data/ctrfhub.db` | Path inside container |

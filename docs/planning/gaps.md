@@ -112,6 +112,13 @@ Severity: **P0** = blocks implementation; **P1** = factual error / contradiction
 **Required action:** When the token-management UI story is designed (likely as part of SET-001 project settings, or a dedicated token-management story), confirm whether per-token limits and permissions live in `apikey.metadata` (JSON shape to be defined), in a new dedicated `project_tokens` table, or in some hybrid. Then: rewire CTRF-002's `keyGenerator` to read from the agreed source, and unblock the deferred `?on_duplicate=` modes by adding the corresponding permission check.
 **Status:** ✅ **Resolved** — `chore(spec): align DD-012/DD-019/§4.20/SET-001 with Better Auth apikey as canonical token store` (PR #27). André chose option (b′) on 2026-04-25: per-token policy (rate limits, permissions) inlines into `apikey.metadata` JSON; `project_tokens` table marked DEPRECATED. CTRF-002's keyGenerator wiring (read `metadata.rateLimit?.perHour`) is a small future follow-up; SET-001's eventual brief picks up the token-management UI implementation.
 
+### G-P1-009 — `SESSION_SECRET` vs `BETTER_AUTH_SECRET` env var naming
+**Source:** Surfaced 2026-05-19 by the `audit-auth` architecture audit (PR #79), Finding #4 in `.argos/audits/audit-auth/findings.md` and follow-up flag in `decomposition.md §Next action`.
+**Affects:** Spec references to the session-signing secret in `docs/planning/architecture.md` (the dev-bootstrap snippet and the env-var table), `docs/planning/deployment-architecture.md` (the compose `environment:` list and the env-var table), and `docs/planning/database-design.md` (the System-page redaction list).
+**Issue:** The spec called the session-signing secret `SESSION_SECRET`, but `src/auth.ts:118` reads `process.env['BETTER_AUTH_SECRET']` because that is the env var name dictated by the Better Auth library. The drift was in the spec, not the code — the name is set by an upstream dependency and is not free to rename.
+**Required action:** Rename every spec reference from `SESSION_SECRET` to `BETTER_AUTH_SECRET`. No code change.
+**Status:** ✅ **Resolved** — `docs(spec): rename SESSION_SECRET → BETTER_AUTH_SECRET to match Better Auth's required env var` (this PR). André adjudicated 2026-05-19 (interactive): the spec is the source of drift; the code is the source of truth because Better Auth itself owns the env-var name. Five spec references updated across `architecture.md`, `deployment-architecture.md`, and `database-design.md`; out-of-scope mentions in `MOVE_TO_URANUS_PLAN.md` and `SESSION_HANDOFF.md` (operational notes, not specs) left as-is and will roll out naturally.
+
 ---
 
 ## P2 — Missing Surface Area (document before implementing the affected feature)

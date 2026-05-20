@@ -1608,7 +1608,7 @@ The `data-pct` attribute is set server-side in the Eta template — no JavaScrip
 **Excluded from the page:**
 - `DATABASE_URL` (contains password)
 - `S3_KEY` and `S3_SECRET`
-- `SESSION_SECRET`
+- `BETTER_AUTH_SECRET`
 - Any env var containing `SECRET`, `PASSWORD`, `KEY`, or `TOKEN`
 
 **Deferred:** Growth trend ("disk will fill in X months") requires daily `system_snapshots` rows written by the nightly worker. This is tracked as PL-008. The System page renders without it — that section is simply omitted from the MVP.

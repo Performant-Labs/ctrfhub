@@ -116,7 +116,7 @@ services:
     entrypoint: ["node", "dist/server.js"]
     environment:
       - DATABASE_URL
-      - SESSION_SECRET
+      - BETTER_AUTH_SECRET
       - EVENT_BUS           # memory | redis
       - REDIS_URL           # required when EVENT_BUS=redis
       - MAX_CTRF_JSON_SIZE       # default: 10mb (PL-003) — caps the `ctrf` JSON field
@@ -207,7 +207,7 @@ Redis uses a Docker Compose **profile** (`scale-out`) so it's not started for st
 | `DATABASE_URL` | ✓ | — | PostgreSQL connection string |
 | `POSTGRES_USER` | ✓ (db only) | — | DB container only |
 | `POSTGRES_PASSWORD` | ✓ (db only) | — | DB container only |
-| `SESSION_SECRET` | ✓ | — | Min 32 chars; used to sign session cookies |
+| `BETTER_AUTH_SECRET` | ✓ | — | Min 32 chars; consumed by Better Auth to sign session cookies. Name dictated by the Better Auth library. |
 | `EVENT_BUS` | | `memory` | `memory` \| `redis` |
 | `REDIS_URL` | When `EVENT_BUS=redis` | — | e.g. `redis://redis:6379` |
 | `MAX_CTRF_JSON_SIZE` | | `10mb` | Cap on the `ctrf` JSON field within a multipart ingest (enforced by `@fastify/multipart` `fields.limits.fieldSize`). Protects the event loop from large `JSON.parse()` calls — see PL-003. Applies equally to `application/json` (raw body) ingest. |
