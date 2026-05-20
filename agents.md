@@ -13,8 +13,8 @@ If you're a fresh Claude session loading this file because something told you to
 | Role | Per-role file (canonical) | Writes | Never writes | Real-world handle (per `CLAUDE.md`) |
 |---|---|---|---|---|
 | **Orchestrator** | `.antigravity/agents/orchestrator.md` | `.argos/<taskId>/*.md` (briefs, audits, PR bodies); status-flip commits to `tasks.md` (`chore(<taskId>): assign` / `complete`) | `src/`, tests, planning docs | **Argos** |
-| **Feature-implementer** | `.antigravity/agents/feature-implementer.md` | `src/`, `src/views/`, `src/migrations/`, `src/client/`, configuration | Anything under `src/__tests__/` or `e2e/tests/` | **Daedalus** (Mac), **Talos** (VM) |
-| **Test-writer** | `.antigravity/agents/test-writer.md` | `src/__tests__/`, `e2e/tests/` | App code (`src/`), templates, migrations | Currently played by Daedalus or Talos in a follow-up session after feature work |
+| **Feature-implementer** | `.antigravity/agents/feature-implementer.md` | `src/`, `src/views/`, `src/migrations/`, `src/client/`, configuration | Anything under `src/__tests__/` or `e2e/tests/` | **Prometheus** (Uranus) |
+| **Test-writer** | `.antigravity/agents/test-writer.md` | `src/__tests__/`, `e2e/tests/` | App code (`src/`), templates, migrations | Currently played by Prometheus in a follow-up session after feature work |
 | **Spec-enforcer** | `.antigravity/agents/spec-enforcer.md` | `.argos/<taskId>/spec-audit.md` only (read-only audit otherwise) | Any source file, any test file, any planning doc | Argos in audit mode; PR-Agent in CI |
 
 ---
@@ -39,15 +39,14 @@ Use the first matching rule:
 
 CTRFHub uses a **manual human-gated relay** between agent sessions. There is no direct agent-to-agent messaging; André copies briefs / handoffs between sessions running in different workspaces.
 
-- **Argos (Orchestrator)** lives in a single Cowork session. Argos reads the codebase, decomposes stories, writes briefs to `.argos/<taskId>/brief.md`, and runs spec-audits.
-- **Daedalus (Feature-implementer / Test-writer on bare-metal Mac)** lives in an AntiGravity instance at `~/Projects/ctrfhub`.
-- **Talos (Feature-implementer / Test-writer in macOS VM)** lives in an AntiGravity instance in a macOS virtual machine. Same role as Daedalus; the VM exists so two stories can run in parallel without sharing a working tree (the working-tree collision class — see `CLAUDE.md` "Agent names" for the precipitating event).
+- **Argos (Orchestrator)** lives in a tmux session on Uranus (`tmux attach -t argos`). Argos reads the codebase, decomposes stories, writes briefs to `.argos/<taskId>/brief.md`, and runs spec-audits end-to-end.
+- **Prometheus (Feature-implementer / Test-writer)** lives in a Claude Code session on Uranus. Single implementation agent; replaced Daedalus + Talos after migration from Mac.
 
 For each story:
 
 ```
 Argos cuts story/<taskId> branch + writes .argos/<taskId>/brief.md
-                ↓ (André pastes brief into Daedalus or Talos)
+                ↓ (André pastes brief into Prometheus)
 Feature-implementer implements + writes .argos/<taskId>/feature-handoff.md
                 ↓ (André pastes handoff into a fresh Test-writer session)
 Test-writer writes tests + tier reports
@@ -59,7 +58,7 @@ Argos Phase 7 close-out: chore(<taskId>): complete commit + open PR
 Human merges
 ```
 
-The `.argos/<taskId>/` directory is **tracked** (not gitignored) and travels with the story branch. Argos commits the brief on the story branch before handing off to a feature-implementer — Daedalus reads it directly from `~/Projects/ctrfhub/.argos/<taskId>/brief.md` after `git pull`; Talos does the same in the VM. Handoffs, tier reports, and spec-audits get committed on the same branch as work progresses, so the entire coordination trail is durable, version-controlled, and visible to every workspace.
+The `.argos/<taskId>/` directory is **tracked** (not gitignored) and travels with the story branch. Argos commits the brief on the story branch before handing off to a feature-implementer — Prometheus reads it directly from `/home/aangel/CTRFHub/.argos/<taskId>/brief.md` after `git pull`. Handoffs, tier reports, and spec-audits get committed on the same branch as work progresses, so the entire coordination trail is durable, version-controlled, and visible to every workspace.
 
 Once the story PR squash-merges, the briefs/handoffs are part of main's history. The PR description still summarizes the story for human readers, but the `.argos/<taskId>/` files are the canonical record of who-said-what during implementation.
 
@@ -67,7 +66,7 @@ Once the story PR squash-merges, the briefs/handoffs are part of main's history.
 
 ## Communication boundaries (who can write what)
 
-| File / directory | Orchestrator (Argos) | Feature-implementer (Daedalus, Talos) | Test-writer | Spec-enforcer |
+| File / directory | Orchestrator (Argos) | Feature-implementer (Prometheus) | Test-writer | Spec-enforcer |
 |---|:---:|:---:|:---:|:---:|
 | `src/` (app code) | — | ✓ | — | — |
 | `src/__tests__/`, `e2e/tests/` | — | — | ✓ | — |
@@ -104,7 +103,7 @@ When in doubt, **escalate** rather than write. The boundaries exist so spec drif
 
 ## See also
 
-- `CLAUDE.md` "Agent names" — the human-readable codenames (Argos, Daedalus, Talos, Hermes) mapped to agent identities and machines
+- `CLAUDE.md` "Agent names" — the human-readable codenames (Argos, Prometheus, Hermes) mapped to agent identities and machines
 - `docs/planning/project-architecture.md` §5 — the multi-session relay protocol in full detail
 - `.antigravity/workflows/implementstory.md` — the Phase 1-7 lifecycle of a single story
 - `DEVELOPER_SETUP.md` — workspace readiness check, prerequisites, PR review workflow
