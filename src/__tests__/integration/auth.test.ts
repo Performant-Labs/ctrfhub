@@ -207,6 +207,15 @@ describe('AUTH-001 Branch 1 — empty-users redirect to /setup', () => {
     const res = await app.inject({ method: 'GET', url: '/setup' });
     expect(res.headers.location).not.toBe('/setup');
   });
+
+  it('GET /__test__/<path> (empty DB) → not redirected to /setup (exempt from Branch 1)', async () => {
+    // /__test__/* is reserved for e2e/test-server.ts and is exempt from the
+    // empty-users redirect so E2E test routes (which carry config.skipAuth)
+    // can run before any user is seeded. The invariant under test: a
+    // /__test__/* path must NEVER 302 to /setup.
+    const res = await app.inject({ method: 'GET', url: '/__test__/anything' });
+    expect(res.headers.location).not.toBe('/setup');
+  });
 });
 
 // ---------------------------------------------------------------------------
