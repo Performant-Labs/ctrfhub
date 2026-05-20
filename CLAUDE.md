@@ -12,9 +12,8 @@ Stack: Node.js 22 LTS · Fastify · TypeScript (strict) · Zod · MikroORM v7 (P
 
 | Codename | Model | Role |
 |---|---|---|
-| **Daedalus** (Daed) | Claude Opus 4.6 (in AntiGravity) | Feature-implementer / test-writer on the Mac at `~/Projects/ctrfhub`. Originally built Phase 1 infrastructure (skills, roles, workflows, task backlog); now does ongoing feature work in parallel with Talos. |
-| **Talos** | Claude Opus 4.6 (in AntiGravity) | Second feature-implementer / test-writer in a macOS VM. Added 2026-04-25 to enable parallel story execution without working-tree collisions between sessions sharing the same checkout. |
-| **Argos** | Claude Opus 4.7 | Orchestrator — assigns tasks via `.argos/<taskId>/brief.md`, runs spec-audits, gates stories, opens PRs. Talks to Daedalus and Talos through André as the human relay. |
+| **Prometheus** | Claude Opus 4.6 | Feature-implementer / test-writer on Uranus. Single implementation agent (replaced Daedalus + Talos after migration from Mac). |
+| **Argos** | Claude Opus 4.7 | Orchestrator — assigns tasks via `.argos/<taskId>/brief.md`, runs spec-audits, gates stories, opens PRs. Talks to Prometheus through André as the human relay. |
 | **Hermes** | — | André's personal manager agent (separate project, not CTRFHub) |
 
 ## Authoritative context — read in this order
